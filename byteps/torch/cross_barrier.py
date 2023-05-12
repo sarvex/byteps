@@ -46,8 +46,8 @@ class _CrossBarrier(_DistributedOptimizer):
         self._logger = logging.getLogger("CrossBarrier")
 
         self._logger.info("CrossBarrier is enabled.")
-        self._logger.debug("byteps size {}, rank {}".format(size(), rank()))
-        self._desc = "rank {}".format(rank())
+        self._logger.debug(f"byteps size {size()}, rank {rank()}")
+        self._desc = f"rank {rank()}"
 
         # Track training steps
         self._step = 0
@@ -73,22 +73,22 @@ class _CrossBarrier(_DistributedOptimizer):
 
     def step(self, closure=None):
         """Override the default step function."""
-        self._logger.debug("{} calls step() {}".format(self._desc, self._step))
+        self._logger.debug(f"{self._desc} calls step() {self._step}")
 
         # Step 0 is called for parameter initialization after parameter broadcast
         if size() > 1 and self._step > 0:
             self._synchronize()
             # if it is the final training step, wait for the completion of all tensors
             if self._step == self._final_step:
-                self._logger.debug("final step {}, waiting for push-pull completion.".format(self._final_step))
+                self._logger.debug(
+                    f"final step {self._final_step}, waiting for push-pull completion."
+                )
                 while not self._event_queue.empty():
                     time.sleep(0.001)
                 self._event_queue.put((None, None, None))
                 self._poller.join()
                 self._logger.info("training finished!")
-            loss = None
-            if closure is not None:
-                loss = closure()
+            loss = closure() if closure is not None else None
             self._step += 1
             return loss
         else:
@@ -100,18 +100,18 @@ class _CrossBarrier(_DistributedOptimizer):
         """Override the default zero_grad function.
         Clears the gradients of all optimized tensors.
         """
-        self._logger.debug("{} calls zero_grad() of step {}".format(self._desc, self._step))
+        self._logger.debug(f"{self._desc} calls zero_grad() of step {self._step}")
         if size() > 1 and self._step > 0:
             return
         else:
             self._opt.zero_grad()
 
     def _get_parameter_name(self, p):
-        if self._is_tensor_instance:
-            name = self._parameter_names.get(p.__hash__())
-        else:
-            name = self._parameter_names.get(p)
-        return name
+        return (
+            self._parameter_names.get(p.__hash__())
+            if self._is_tensor_instance
+            else self._parameter_names.get(p)
+        )
 
     def _register_hooks(self):
         for param_group in self.param_groups:
@@ -150,8 +150,12 @@ class _CrossBarrier(_DistributedOptimizer):
         tensor_compressed, ctx = self._compression.compress(tensor)
 
         self._locks[p].acquire()
-        handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
-        self._logger.debug("{} calls byteps_push_pull for {}".format(self._desc, self._get_parameter_name(p)))
+        handle = byteps_push_pull(
+            tensor_compressed, average=True, name=f"Gradient.{name}"
+        )
+        self._logger.debug(
+            f"{self._desc} calls byteps_push_pull for {self._get_parameter_name(p)}"
+        )
         # Add to queue to poll completion
         self._event_queue.put((p, handle, ctx))
         return handle, ctx
@@ -167,7 +171,9 @@ class _CrossBarrier(_DistributedOptimizer):
             if handle is not None and poll(handle):
                 output = synchronize(handle)
                 p.grad.set_(self._compression.decompress(output, ctx))
-                self._logger.debug("{} {} finished push-pull".format(self._desc, self._get_parameter_name(p)))
+                self._logger.debug(
+                    f"{self._desc} {self._get_parameter_name(p)} finished push-pull"
+                )
                 self._push_pull_delay[p] = self.backward_passes_per_step
                 # So only support SGD, Adam and RMSprop optimizers in torch
                 if isinstance(self._opt, torch.optim.SGD):
@@ -195,7 +201,7 @@ class _CrossBarrier(_DistributedOptimizer):
             q.put(mod)
         while not q.empty():
             mod = q.get()
-            if len(list(mod.children())) == 0:
+            if not list(mod.children()):
                 submodules.append(mod)
             else:
                 for m in mod.children():
@@ -247,7 +253,7 @@ class _CrossBarrier(_DistributedOptimizer):
             for gp in group['params']:
                 if self._get_parameter_name(p) != self._get_parameter_name(gp) or gp.shape != p.shape:
                     continue
-                self._logger.debug("{} is updating {}".format(self._desc, self._get_parameter_name(p)))
+                self._logger.debug(f"{self._desc} is updating {self._get_parameter_name(p)}")
                 if p.grad is None:
                     continue
                 d_p = p.grad.data
@@ -261,10 +267,7 @@ class _CrossBarrier(_DistributedOptimizer):
                     else:
                         buf = param_state['momentum_buffer']
                         buf.mul_(momentum).add_(1 - dampening, d_p)
-                    if nesterov:
-                        d_p = d_p.add(momentum, buf)
-                    else:
-                        d_p = buf
+                    d_p = d_p.add(momentum, buf) if nesterov else buf
                 p.data.add_(-group['lr'], d_p)
                 break
 
@@ -277,7 +280,7 @@ class _CrossBarrier(_DistributedOptimizer):
             for gp in group['params']:
                 if self._get_parameter_name(p) != self._get_parameter_name(gp) or gp.shape != p.shape:
                     continue
-                self._logger.debug("{} is updating {}".format(self._desc, self._get_parameter_name(p)))
+                self._logger.debug(f"{self._desc} is updating {self._get_parameter_name(p)}")
                 if p.grad is None:
                     continue
                 grad = p.grad.data
@@ -338,7 +341,7 @@ class _CrossBarrier(_DistributedOptimizer):
             for gp in group['params']:
                 if self._get_parameter_name(p) != self._get_parameter_name(gp) or gp.shape != p.shape:
                     continue
-                self._logger.debug("{} is updating {}".format(self._desc, self._get_parameter_name(p)))
+                self._logger.debug(f"{self._desc} is updating {self._get_parameter_name(p)}")
                 if p.grad is None:
                     continue
                 grad = p.grad.data

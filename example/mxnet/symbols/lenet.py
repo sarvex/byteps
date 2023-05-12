@@ -59,6 +59,4 @@ def get_symbol(num_classes=10, add_stn=False, **kwargs):
     tanh3 = mx.symbol.Activation(data=fc1, act_type="tanh")
     # second fullc
     fc2 = mx.symbol.FullyConnected(data=tanh3, num_hidden=num_classes)
-    # loss
-    lenet = mx.symbol.SoftmaxOutput(data=fc2, name='softmax')
-    return lenet
+    return mx.symbol.SoftmaxOutput(data=fc2, name='softmax')

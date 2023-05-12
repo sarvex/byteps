@@ -37,38 +37,39 @@ import collections
 
 
 class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
-    def  __init__(self, params, named_parameters, model, fp16_params, fp32_params, loss_scale,
+    def __init__(self, params, named_parameters, model, fp16_params, fp32_params, loss_scale,
                  compression, backward_passes_per_step=1):
         super(self.__class__, self).__init__(params)
         self._compression = compression
-
-        if named_parameters is not None:
-            named_parameters = list(named_parameters)
-        else:
-            named_parameters = []
 
         self._model = model
         self.fp32_params = fp32_params
         self.fp16_params = fp16_params
         self.loss_scale = loss_scale
 
+        named_parameters = (
+            list(named_parameters) if named_parameters is not None else []
+        )
         # Track training steps
         # self._step = 0
 
         # make sure that named_parameters are tuples
-        if any([not isinstance(p, tuple) for p in named_parameters]):
+        if any(not isinstance(p, tuple) for p in named_parameters):
             raise ValueError('named_parameters should be a sequence of '
                              'tuples (name, parameter), usually produced by '
                              'model.named_parameters().')
 
         dups = _HalfPrecisionDistributedOptimizer.find_duplicates([k for k, _ in named_parameters])
         if len(dups) > 0:
-            raise ValueError('Parameter names in named_parameters must be unique. '
-                             'Found duplicates: %s' % ', '.join(dups))
+            raise ValueError(
+                f"Parameter names in named_parameters must be unique. Found duplicates: {', '.join(dups)}"
+            )
 
-        if len(named_parameters) > 0:
+        if named_parameters:
             if isinstance(named_parameters[0][1], torch.Tensor):
-                if any([not isinstance(p, torch.Tensor) for name, p in named_parameters]):
+                if any(
+                    not isinstance(p, torch.Tensor) for name, p in named_parameters
+                ):
                     raise ValueError('named_parameters should consistently be a sequence of '
                                      'tuples (name, torch.Tensor)')
                 self._is_tensor_instance = True
@@ -83,9 +84,11 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
                                          in sorted(named_parameters)}
         else:
             self._is_tensor_instance = False
-            self._parameter_names = {v: 'push_pull.noname.%s' % i
-                                     for param_group in self.param_groups
-                                     for i, v in enumerate(param_group['params'])}
+            self._parameter_names = {
+                v: f'push_pull.noname.{i}'
+                for param_group in self.param_groups
+                for i, v in enumerate(param_group['params'])
+            }
 
         self._fp32_to_fp16_map = {}
         self._fp16_to_fp32_map = {}
@@ -111,10 +114,10 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
 
         # declare tensors
         for name in self._parameter_names.values():
-            declare("Gradient."+name)
+            declare(f"Gradient.{name}")
         # We use two loops for load-balancing
         for name in self._parameter_names.values():
-            declare("Parameter."+name)
+            declare(f"Parameter.{name}")
 
         self.priorities = {}
         self.gradient_count = 0
@@ -144,7 +147,7 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             q.put(mod)
         while not q.empty():
             mod = q.get()
-            if len(list(mod.children())) == 0:
+            if not list(mod.children()):
                 submodules.append(mod)
             else:
                 for m in mod.children():
@@ -160,14 +163,13 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
                                 break
                             if self._try_to_synchronize(fp32_p):
                                 break
-                            else:
-                                # In order not to waste GPU cycles, we find another handle to synchronize
-                                params = list(self._handles.keys())
-                                for other_p in params:
-                                    if other_p.__hash__() == fp32_p.__hash__():
-                                        continue
-                                    if self._try_to_synchronize(other_p):
-                                        break
+                            # In order not to waste GPU cycles, we find another handle to synchronize
+                            params = list(self._handles.keys())
+                            for other_p in params:
+                                if other_p.__hash__() == fp32_p.__hash__():
+                                    continue
+                                if self._try_to_synchronize(other_p):
+                                    break
                         time.sleep(0.0001)
 
         def after_forward_hook(mod, input, result):
@@ -206,18 +208,26 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
         if fp16_p not in self.priorities:
             self.priorities[fp16_p] = self.gradient_count
             self.gradient_count += 1
-        handle = byteps_push_pull(tensor_compressed, average=False, name="Gradient."+name, priority=self.priorities[fp16_p])
+        handle = byteps_push_pull(
+            tensor_compressed,
+            average=False,
+            name=f"Gradient.{name}",
+            priority=self.priorities[fp16_p],
+        )
         return handle, ctx
 
     def _make_hook(self, p):
         def hook(*ignore):
-            if p in self._handles and self._handles[p][0] is not None:
-                if self._push_pull_delay[p] <= 0:
-                    raise AssertionError(
-                        "Gradients were computed more than "
-                        "backward_passes_per_step times before call "
-                        "to step(). Increase backward_passes_per_step to "
-                        "accumulate gradients locally.")
+            if (
+                p in self._handles
+                and self._handles[p][0] is not None
+                and self._push_pull_delay[p] <= 0
+            ):
+                raise AssertionError(
+                    "Gradients were computed more than "
+                    "backward_passes_per_step times before call "
+                    "to step(). Increase backward_passes_per_step to "
+                    "accumulate gradients locally.")
             assert not p.grad.requires_grad
             assert self._push_pull_delay[p] > 0
             handle, ctx = None, None
@@ -225,6 +235,7 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             if self._push_pull_delay[p] == 0:
                 handle, ctx = self._push_pull_grad_async(p)
             self._handles[p] = (handle, ctx)
+
         return hook
 
     def _sync_missing_gradients(self):
@@ -244,10 +255,7 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             self._sync_missing_gradients()
             if wait_for_finish:
                 self._wait_for_all()
-            loss = None
-            if closure is not None:
-                loss = closure()
-            return loss
+            return closure() if closure is not None else None
         else:
             super(self.__class__, self).step()
 
@@ -258,10 +266,7 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
             closure (callable, optional): A closure that reevaluates the model
                 and returns the loss.
         """
-        loss = None
-        if closure is not None:
-            loss = closure()
-
+        loss = closure() if closure is not None else None
         for group in self.param_groups:
             weight_decay = group['weight_decay']
             momentum = group['momentum']
@@ -283,11 +288,7 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
                     else:
                         buf = param_state['momentum_buffer']
                         buf.mul_(momentum).add_(1 - dampening, d_p)
-                    if nesterov:
-                        d_p = d_p.add(momentum, buf)
-                    else:
-                        d_p = buf
-
+                    d_p = d_p.add(momentum, buf) if nesterov else buf
                 p.data.add_(-group['lr'], d_p)
 
         return loss
@@ -309,22 +310,22 @@ class _HalfPrecisionDistributedOptimizer(torch.optim.Optimizer):
 
     def _try_to_synchronize(self, p):
         handle, ctx = self._handles[p]
-        if poll(handle):
-            output = synchronize(handle)
-            self._push_pull_delay[p] = self.backward_passes_per_step
-            if self._is_tensor_instance:
-                fp16_p = self._fp32_to_fp16_map.get(p.__hash__())
-            else:
-                fp16_p = self._fp32_to_fp16_map.get(p)
-            fp16_p.grad.set_(self._compression.decompress(output, ctx))
-            p.grad.data.copy_(fp16_p.grad.data)
-            p.grad.data = p.grad.data / (self.loss_scale * size())
-            self._step_one_param(p)
-            fp16_p.data.copy_(p.data)
-            self._handles.pop(p)
-            return True
-        else:
+        if not poll(handle):
             return False
+        output = synchronize(handle)
+        self._push_pull_delay[p] = self.backward_passes_per_step
+        fp16_p = (
+            self._fp32_to_fp16_map.get(p.__hash__())
+            if self._is_tensor_instance
+            else self._fp32_to_fp16_map.get(p)
+        )
+        fp16_p.grad.set_(self._compression.decompress(output, ctx))
+        p.grad.data.copy_(fp16_p.grad.data)
+        p.grad.data = p.grad.data / (self.loss_scale * size())
+        self._step_one_param(p)
+        fp16_p.data.copy_(p.data)
+        self._handles.pop(p)
+        return True
 
 
 def DistributedOptimizer(optimizer, named_parameters=None,
@@ -398,7 +399,7 @@ def broadcast_parameters(params, root_rank):
         # support both named_parameters() and regular parameters()
         params = [p if isinstance(p, tuple) else (None, p) for p in params]
     else:
-        raise ValueError('invalid params of type: %s' % type(params))
+        raise ValueError(f'invalid params of type: {type(params)}')
 
     # Run synchronous broadcasts.
     for name, p in params:
@@ -407,7 +408,7 @@ def broadcast_parameters(params, root_rank):
         if rank() != root_rank:
             p.fill_(0)
         # Remember to disable averaging because we are doing broadcast
-        handle = byteps_push_pull(p, average=False, name="Parameter."+name)
+        handle = byteps_push_pull(p, average=False, name=f"Parameter.{name}")
         synchronize(handle)
 
 

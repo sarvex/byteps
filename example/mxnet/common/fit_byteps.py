@@ -153,7 +153,7 @@ def fit(args, network, data_loader, **kwargs):
     #                                  'threshold': args.gc_threshold})
 
     # logging
-    head = '%(asctime)-15s Node[' + str(bps.rank()) + '] %(message)s'
+    head = f'%(asctime)-15s Node[{str(bps.rank())}] %(message)s'
     logging.basicConfig(level=logging.DEBUG, format=head)
     logging.info('start with arguments %s', args)
 
@@ -200,14 +200,14 @@ def fit(args, network, data_loader, **kwargs):
     )
 
     lr_scheduler = lr_scheduler
+    # Only a limited number of optimizers have 'momentum' property
+    has_momentum = {'sgd', 'dcasgd', 'nag'}
     optimizer_params = {
         'learning_rate': lr,
         'wd': args.wd,
         'lr_scheduler': lr_scheduler,
-        'multi_precision': True}
-
-    # Only a limited number of optimizers have 'momentum' property
-    has_momentum = {'sgd', 'dcasgd', 'nag'}
+        'multi_precision': True,
+    }
     if args.optimizer in has_momentum:
         optimizer_params['momentum'] = args.mom
 
@@ -217,16 +217,11 @@ def fit(args, network, data_loader, **kwargs):
     # A limited number of optimizers have a warmup period
     has_warmup = {'lbsgd', 'lbnag'}
     if args.optimizer in has_warmup:
-        if bps.size() > 1:
-            nworkers = bps.size()
-        else:
-            nworkers = 1
+        nworkers = max(bps.size(), 1)
         epoch_size = args.num_examples / args.batch_size / nworkers
-        if epoch_size < 1:
-            epoch_size = 1
+        epoch_size = max(epoch_size, 1)
         macrobatch_size = args.macrobatch_size
-        if macrobatch_size < args.batch_size * nworkers:
-            macrobatch_size = args.batch_size * nworkers
+        macrobatch_size = max(macrobatch_size, args.batch_size * nworkers)
         #batch_scale = round(float(macrobatch_size) / args.batch_size / nworkers +0.4999)
         batch_scale = math.ceil(
             float(macrobatch_size) / args.batch_size / nworkers)
@@ -269,18 +264,19 @@ def fit(args, network, data_loader, **kwargs):
         eval_metrics.append(mx.metric.create(
             'top_k_accuracy', top_k=args.top_k))
 
-    supported_loss = ['ce', 'nll_loss']
     if len(args.loss) > 0:
         # ce or nll loss is only applicable to softmax output
         loss_type_list = args.loss.split(',')
         if 'softmax_output' in network.list_outputs():
+            supported_loss = ['ce', 'nll_loss']
             for loss_type in loss_type_list:
                 loss_type = loss_type.strip()
                 if loss_type == 'nll':
                     loss_type = 'nll_loss'
                 if loss_type not in supported_loss:
-                    logging.warning(loss_type + ' is not an valid loss type, only cross-entropy or ' \
-                                    'negative likelihood loss is supported!')
+                    logging.warning(
+                        f'{loss_type} is not an valid loss type, only cross-entropy or negative likelihood loss is supported!'
+                    )
                 else:
                     eval_metrics.append(mx.metric.create(loss_type))
         else:
@@ -296,7 +292,7 @@ def fit(args, network, data_loader, **kwargs):
     # BytePS wrapper
     opt = mx.optimizer.create(args.optimizer, sym=network, **optimizer_params)
     # opt = bps.DistributedOptimizer(opt)
-    print(str(os.environ) + "=============" + str(bps.rank()))
+    print(f"{os.environ}============={str(bps.rank())}")
 
     # else:
     opt = bps.DistributedOptimizer(opt)

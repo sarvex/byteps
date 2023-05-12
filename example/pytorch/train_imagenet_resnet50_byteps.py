@@ -67,13 +67,14 @@ if args.cuda:
 
 cudnn.benchmark = True
 
-# If set > 0, will resume training from a given checkpoint.
-resume_from_epoch = 0
-for try_epoch in range(args.epochs, 0, -1):
-    if os.path.exists(args.checkpoint_format.format(epoch=try_epoch)):
-        resume_from_epoch = try_epoch
-        break
-
+resume_from_epoch = next(
+    (
+        try_epoch
+        for try_epoch in range(args.epochs, 0, -1)
+        if os.path.exists(args.checkpoint_format.format(epoch=try_epoch))
+    ),
+    0,
+)
 # BytePS: broadcast resume_from_epoch from rank 0 (which will have
 # checkpoints) to other ranks.
 #resume_from_epoch = bps.broadcast(torch.tensor(resume_from_epoch), root_rank=0,
@@ -160,9 +161,7 @@ def train(epoch):
     train_loss = Metric('train_loss')
     train_accuracy = Metric('train_accuracy')
 
-    with tqdm(total=len(train_loader),
-              desc='Train Epoch     #{}'.format(epoch + 1),
-              disable=not verbose) as t:
+    with tqdm(total=len(train_loader), desc=f'Train Epoch     #{epoch + 1}', disable=not verbose) as t:
         for batch_idx, (data, target) in enumerate(train_loader):
             adjust_learning_rate(epoch, batch_idx)
 
@@ -196,9 +195,7 @@ def validate(epoch):
     val_loss = Metric('val_loss')
     val_accuracy = Metric('val_accuracy')
 
-    with tqdm(total=len(val_loader),
-              desc='Validate Epoch  #{}'.format(epoch + 1),
-              disable=not verbose) as t:
+    with tqdm(total=len(val_loader), desc=f'Validate Epoch  #{epoch + 1}', disable=not verbose) as t:
         with torch.no_grad():
             for data, target in val_loader:
                 if args.cuda:

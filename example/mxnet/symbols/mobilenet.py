@@ -36,16 +36,33 @@ alpha_values = [0.25, 0.50, 0.75, 1.0]
 
 
 def Conv(data, num_filter=1, kernel=(1, 1), stride=(1, 1), pad=(0, 0), num_group=1, name='', suffix=''):
-    conv = mx.sym.Convolution(data=data, num_filter=num_filter, kernel=kernel, num_group=num_group, stride=stride, pad=pad, no_bias=True, name='%s%s_conv2d' % (name, suffix))
-    bn = mx.sym.BatchNorm(data=conv, name='%s%s_batchnorm' % (name, suffix), fix_gamma=True)
-    act = mx.sym.Activation(data=bn, act_type='relu', name='%s%s_relu' % (name, suffix))
-    return act
+    conv = mx.sym.Convolution(
+        data=data,
+        num_filter=num_filter,
+        kernel=kernel,
+        num_group=num_group,
+        stride=stride,
+        pad=pad,
+        no_bias=True,
+        name=f'{name}{suffix}_conv2d',
+    )
+    bn = mx.sym.BatchNorm(
+        data=conv, name=f'{name}{suffix}_batchnorm', fix_gamma=True
+    )
+    return mx.sym.Activation(data=bn, act_type='relu', name=f'{name}{suffix}_relu')
 
 
 def Conv_DPW(data, depth=1, stride=(1, 1), name='', idx=0, suffix=''):
     conv_dw = Conv(data, num_group=depth, num_filter=depth, kernel=(3, 3), pad=(1, 1), stride=stride, name="conv_%d_dw" % (idx), suffix=suffix)
-    conv = Conv(conv_dw, num_filter=depth * stride[0], kernel=(1, 1), pad=(0, 0), stride=(1, 1), name="conv_%d" % (idx), suffix=suffix)
-    return conv
+    return Conv(
+        conv_dw,
+        num_filter=depth * stride[0],
+        kernel=(1, 1),
+        pad=(0, 0),
+        stride=(1, 1),
+        name="conv_%d" % (idx),
+        suffix=suffix,
+    )
 
 
 def get_symbol_compact(num_classes, alpha=1, resolution=224, **kwargs):
@@ -78,8 +95,7 @@ def get_symbol_compact(num_classes, alpha=1, resolution=224, **kwargs):
     pool = mx.sym.Pooling(data=conv_14_dpw, kernel=(pool_size, pool_size), stride=(1, 1), pool_type="avg", name="global_pool")
     flatten = mx.sym.Flatten(data=pool, name="flatten")
     fc = mx.symbol.FullyConnected(data=flatten, num_hidden=num_classes, name='fc')
-    softmax = mx.symbol.SoftmaxOutput(data=fc, name='softmax')
-    return softmax
+    return mx.symbol.SoftmaxOutput(data=fc, name='softmax')
 
 
 def get_symbol(num_classes, alpha=1, resolution=224, **kwargs):
@@ -140,5 +156,4 @@ def get_symbol(num_classes, alpha=1, resolution=224, **kwargs):
     pool = mx.sym.Pooling(data=conv_14, kernel=(pool_size, pool_size), stride=(1, 1), pool_type="avg", name="global_pool")
     flatten = mx.sym.Flatten(data=pool, name="flatten")
     fc = mx.symbol.FullyConnected(data=flatten, num_hidden=num_classes, name='fc')
-    softmax = mx.symbol.SoftmaxOutput(data=fc, name='softmax')
-    return softmax
+    return mx.symbol.SoftmaxOutput(data=fc, name='softmax')

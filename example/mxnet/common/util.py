@@ -29,16 +29,15 @@ def download_file(url, local_fname=None, force_write=False):
 
     dir_name = os.path.dirname(local_fname)
 
-    if dir_name != "":
-        if not os.path.exists(dir_name):
-            try: # try to create the directory if it doesn't exists
-                os.makedirs(dir_name)
-            except OSError as exc:
-                if exc.errno != errno.EEXIST:
-                    raise
+    if dir_name != "" and not os.path.exists(dir_name):
+        try: # try to create the directory if it doesn't exists
+            os.makedirs(dir_name)
+        except OSError as exc:
+            if exc.errno != errno.EEXIST:
+                raise
 
     r = requests.get(url, stream=True)
-    assert r.status_code == 200, "failed to open %s" % url
+    assert r.status_code == 200, f"failed to open {url}"
     with open(local_fname, 'wb') as f:
         for chunk in r.iter_content(chunk_size=1024):
             if chunk: # filter out keep-alive new chunks

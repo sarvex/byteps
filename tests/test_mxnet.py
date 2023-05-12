@@ -32,10 +32,7 @@ class MXTest(unittest.TestCase, metaclass=MetaTest):
     Tests for ops in byteps.mxnet.
     """
     def _current_context(self):
-        if has_gpu:
-            return mx.gpu(bps.local_rank())
-        else:
-            return mx.current_context()
+        return mx.gpu(bps.local_rank()) if has_gpu else mx.current_context()
     
     def test_byteps_trainer_param_order(self):
         net = mx.gluon.nn.Sequential()
@@ -50,7 +47,7 @@ class MXTest(unittest.TestCase, metaclass=MetaTest):
         trainer._init_params()
         # check the result of bps_broadcast
         for name, init in layers.items():
-            weight = params[name + 'weight'].data()[0].asnumpy()
+            weight = params[f'{name}weight'].data()[0].asnumpy()
             expected = np.full(shape=weight.shape,
                                fill_value=init, dtype=weight.dtype)
             assert np.array_equal(weight, expected), (weight, expected)
@@ -61,10 +58,9 @@ class MXTest(unittest.TestCase, metaclass=MetaTest):
         """Test that the byteps_push_pull correctly sums 1D, 2D, 3D tensors."""
         dtypes = ['float16', 'float32', 'float64']
         dims = [1, 2, 3]
-        count = 0
         ctx = self._current_context()
         shapes = [(), (17), (17, 17), (17, 17, 17)]
-        for dtype, dim in itertools.product(dtypes, dims):
+        for count, (dtype, dim) in enumerate(itertools.product(dtypes, dims)):
             # MXNet uses gpu_id as part of the seed, so to get identical seeds
             # we must set a context.
             mx.random.seed(10 + 10 * bps.rank(), ctx=ctx)
@@ -73,13 +69,11 @@ class MXTest(unittest.TestCase, metaclass=MetaTest):
             tensor = tensor.astype(dtype)
             input = tensor.asnumpy()
 
-            bps.byteps_declare_tensor("tensor_" + str(count))
-            bps.byteps_push_pull(tensor, name="tensor_"+str(count))
+            bps.byteps_declare_tensor(f"tensor_{str(count)}")
+            bps.byteps_push_pull(tensor, name=f"tensor_{str(count)}")
             tensor.wait_to_read()
             output = tensor.asnumpy()
             assert np.allclose(input, output)
-            count += 1
-
         print('test_byteps_push_pull passed')
 
     def test_byteps_push_pull_inplace(self):
@@ -96,8 +90,8 @@ class MXTest(unittest.TestCase, metaclass=MetaTest):
                                           ctx=ctx)
             tensor = tensor.astype(dtype)
             multiplied = tensor.copy()
-            bps.byteps_declare_tensor("tensor_" + str(count))
-            bps.byteps_push_pull(tensor, name="tensor_" + str(count))
+            bps.byteps_declare_tensor(f"tensor_{str(count)}")
+            bps.byteps_push_pull(tensor, name=f"tensor_{str(count)}")
             max_difference = mx.nd.max(mx.nd.subtract(tensor, multiplied))
             count += 1
 

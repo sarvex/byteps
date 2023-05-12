@@ -30,9 +30,9 @@ def ConvFactory(data, num_filter, kernel, stride=(1, 1), pad=(0, 0), act_type="r
         data=data, num_filter=num_filter, kernel=kernel, stride=stride, pad=pad)
     bn = mx.symbol.BatchNorm(data=conv)
     if with_act:
-        act = mx.symbol.Activation(
-            data=bn, act_type=act_type, attr=mirror_attr)
-        return act
+        return mx.symbol.Activation(
+            data=bn, act_type=act_type, attr=mirror_attr
+        )
     else:
         return bn
 
@@ -50,9 +50,9 @@ def block35(net, input_num_channels, scale=1.0, with_act=True, act_type='relu', 
 
     net = net + scale * tower_out
     if with_act:
-        act = mx.symbol.Activation(
-            data=net, act_type=act_type, attr=mirror_attr)
-        return act
+        return mx.symbol.Activation(
+            data=net, act_type=act_type, attr=mirror_attr
+        )
     else:
         return net
 
@@ -67,9 +67,9 @@ def block17(net, input_num_channels, scale=1.0, with_act=True, act_type='relu', 
         tower_mixed, input_num_channels, (1, 1), with_act=False)
     net = net + scale * tower_out
     if with_act:
-        act = mx.symbol.Activation(
-            data=net, act_type=act_type, attr=mirror_attr)
-        return act
+        return mx.symbol.Activation(
+            data=net, act_type=act_type, attr=mirror_attr
+        )
     else:
         return net
 
@@ -84,16 +84,16 @@ def block8(net, input_num_channels, scale=1.0, with_act=True, act_type='relu', m
         tower_mixed, input_num_channels, (1, 1), with_act=False)
     net = net + scale * tower_out
     if with_act:
-        act = mx.symbol.Activation(
-            data=net, act_type=act_type, attr=mirror_attr)
-        return act
+        return mx.symbol.Activation(
+            data=net, act_type=act_type, attr=mirror_attr
+        )
     else:
         return net
 
 
 def repeat(inputs, repetitions, layer, *args, **kwargs):
     outputs = inputs
-    for i in range(repetitions):
+    for _ in range(repetitions):
         outputs = layer(outputs, *args, **kwargs)
     return outputs
 
@@ -154,5 +154,4 @@ def get_symbol(num_classes=1000, **kwargs):
     net = mx.symbol.Flatten(net)
     net = mx.symbol.Dropout(data=net, p=0.2)
     net = mx.symbol.FullyConnected(data=net, num_hidden=num_classes)
-    softmax = mx.symbol.SoftmaxOutput(data=net, name='softmax')
-    return softmax
+    return mx.symbol.SoftmaxOutput(data=net, name='softmax')

@@ -46,9 +46,11 @@ def _get_lr_scheduler(args, kv):
         logging.info('Adjust learning rate to %e for epoch %d',
                      lr, begin_epoch)
 
-    steps = [epoch_size * (x - begin_epoch)
-             for x in step_epochs if x - begin_epoch > 0]
-    if steps:
+    if steps := [
+        epoch_size * (x - begin_epoch)
+        for x in step_epochs
+        if x - begin_epoch > 0
+    ]:
         return (lr, mx.lr_scheduler.MultiFactorScheduler(step=steps, factor=args.lr_factor,
                                                          base_lr=args.lr))
     else:
@@ -164,14 +166,14 @@ def fit(args, network, data_loader, **kwargs):
 
     if args.profile_worker_suffix:
         if kv.num_workers > 1:
-            filename = 'rank' + str(kv.rank) + '_' + args.profile_worker_suffix
+            filename = f'rank{str(kv.rank)}_{args.profile_worker_suffix}'
         else:
             filename = args.profile_worker_suffix
         mx.profiler.set_config(filename=filename, profile_all=True, profile_process='worker')
         mx.profiler.set_state(state='run', profile_process='worker')
 
     # logging
-    head = '%(asctime)-15s Node[' + str(kv.rank) + '] %(message)s'
+    head = f'%(asctime)-15s Node[{str(kv.rank)}] %(message)s'
     logging.basicConfig(level=logging.DEBUG, format=head)
     logging.info('start with arguments %s', args)
 
@@ -179,7 +181,7 @@ def fit(args, network, data_loader, **kwargs):
 
     # data iterators
     (train, val) = data_loader(args, kv)
-    if 'dist' in args.kv_store and not 'async' in args.kv_store:
+    if 'dist' in args.kv_store and 'async' not in args.kv_store:
         logging.info('Resizing training data to %d batches per machine', epoch_size)
         # resize train iter to ensure each machine has same number of batches per epoch
         # if not, dist_sync can hang at the end with one machine waiting for other machines
@@ -227,14 +229,14 @@ def fit(args, network, data_loader, **kwargs):
     )
 
     lr_scheduler = lr_scheduler
+    # Only a limited number of optimizers have 'momentum' property
+    has_momentum = {'sgd', 'dcasgd', 'nag', 'signum', 'lbsgd'}
     optimizer_params = {
         'learning_rate': lr,
         'wd': args.wd,
         'lr_scheduler': lr_scheduler,
-        'multi_precision': True}
-
-    # Only a limited number of optimizers have 'momentum' property
-    has_momentum = {'sgd', 'dcasgd', 'nag', 'signum', 'lbsgd'}
+        'multi_precision': True,
+    }
     if args.optimizer in has_momentum:
         optimizer_params['momentum'] = args.mom
 
@@ -245,11 +247,9 @@ def fit(args, network, data_loader, **kwargs):
     has_warmup = {'lbsgd', 'lbnag'}
     if args.optimizer in has_warmup:
         nworkers = kv.num_workers
-        if epoch_size < 1:
-            epoch_size = 1
+        epoch_size = max(epoch_size, 1)
         macrobatch_size = args.macrobatch_size
-        if macrobatch_size < args.batch_size * nworkers:
-            macrobatch_size = args.batch_size * nworkers
+        macrobatch_size = max(macrobatch_size, args.batch_size * nworkers)
         #batch_scale = round(float(macrobatch_size) / args.batch_size / nworkers +0.4999)
         batch_scale = math.ceil(
             float(macrobatch_size) / args.batch_size / nworkers)
@@ -292,18 +292,19 @@ def fit(args, network, data_loader, **kwargs):
         eval_metrics.append(mx.metric.create(
             'top_k_accuracy', top_k=args.top_k))
 
-    supported_loss = ['ce', 'nll_loss']
     if len(args.loss) > 0:
         # ce or nll loss is only applicable to softmax output
         loss_type_list = args.loss.split(',')
         if 'softmax_output' in network.list_outputs():
+            supported_loss = ['ce', 'nll_loss']
             for loss_type in loss_type_list:
                 loss_type = loss_type.strip()
                 if loss_type == 'nll':
                     loss_type = 'nll_loss'
                 if loss_type not in supported_loss:
-                    logging.warning(loss_type + ' is not an valid loss type, only cross-entropy or ' \
-                                    'negative likelihood loss is supported!')
+                    logging.warning(
+                        f'{loss_type} is not an valid loss type, only cross-entropy or negative likelihood loss is supported!'
+                    )
                 else:
                     eval_metrics.append(mx.metric.create(loss_type))
         else:

@@ -127,8 +127,7 @@ def parse_args():
     parser.add_argument('--fp16-pushpull', action='store_true', default=False,
                         help='use fp16 compression during pushpull')
 
-    opt = parser.parse_args()
-    return opt
+    return parser.parse_args()
 
 
 def main():

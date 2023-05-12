@@ -47,56 +47,153 @@ def residual_unit(data, num_filter, stride, dim_match, name, bottle_neck=True, n
     if bottle_neck:
         # the same as https://github.com/facebook/fb.resnet.torch#notes, a bit difference with origin paper
 
-        conv1 = mx.sym.Convolution(data=data, num_filter=int(num_filter*0.5), kernel=(1,1), stride=(1,1), pad=(0,0),
-                                      no_bias=True, workspace=workspace, name=name + '_conv1')
-        bn1 = mx.sym.BatchNorm(data=conv1, fix_gamma=False, eps=2e-5, momentum=bn_mom, name=name + '_bn1')
-        act1 = mx.sym.Activation(data=bn1, act_type='relu', name=name + '_relu1')
+        conv1 = mx.sym.Convolution(
+            data=data,
+            num_filter=int(num_filter * 0.5),
+            kernel=(1, 1),
+            stride=(1, 1),
+            pad=(0, 0),
+            no_bias=True,
+            workspace=workspace,
+            name=f'{name}_conv1',
+        )
+        bn1 = mx.sym.BatchNorm(
+            data=conv1,
+            fix_gamma=False,
+            eps=2e-5,
+            momentum=bn_mom,
+            name=f'{name}_bn1',
+        )
+        act1 = mx.sym.Activation(data=bn1, act_type='relu', name=f'{name}_relu1')
 
 
-        conv2 = mx.sym.Convolution(data=act1, num_filter=int(num_filter*0.5), num_group=num_group, kernel=(3,3), stride=stride, pad=(1,1),
-                                      no_bias=True, workspace=workspace, name=name + '_conv2')
-        bn2 = mx.sym.BatchNorm(data=conv2, fix_gamma=False, eps=2e-5, momentum=bn_mom, name=name + '_bn2')
-        act2 = mx.sym.Activation(data=bn2, act_type='relu', name=name + '_relu2')
+        conv2 = mx.sym.Convolution(
+            data=act1,
+            num_filter=int(num_filter * 0.5),
+            num_group=num_group,
+            kernel=(3, 3),
+            stride=stride,
+            pad=(1, 1),
+            no_bias=True,
+            workspace=workspace,
+            name=f'{name}_conv2',
+        )
+        bn2 = mx.sym.BatchNorm(
+            data=conv2,
+            fix_gamma=False,
+            eps=2e-5,
+            momentum=bn_mom,
+            name=f'{name}_bn2',
+        )
+        act2 = mx.sym.Activation(data=bn2, act_type='relu', name=f'{name}_relu2')
 
 
-        conv3 = mx.sym.Convolution(data=act2, num_filter=num_filter, kernel=(1,1), stride=(1,1), pad=(0,0), no_bias=True,
-                                   workspace=workspace, name=name + '_conv3')
-        bn3 = mx.sym.BatchNorm(data=conv3, fix_gamma=False, eps=2e-5, momentum=bn_mom, name=name + '_bn3')
+        conv3 = mx.sym.Convolution(
+            data=act2,
+            num_filter=num_filter,
+            kernel=(1, 1),
+            stride=(1, 1),
+            pad=(0, 0),
+            no_bias=True,
+            workspace=workspace,
+            name=f'{name}_conv3',
+        )
+        bn3 = mx.sym.BatchNorm(
+            data=conv3,
+            fix_gamma=False,
+            eps=2e-5,
+            momentum=bn_mom,
+            name=f'{name}_bn3',
+        )
 
         if dim_match:
             shortcut = data
         else:
-            shortcut_conv = mx.sym.Convolution(data=data, num_filter=num_filter, kernel=(1,1), stride=stride, no_bias=True,
-                                            workspace=workspace, name=name+'_sc')
-            shortcut = mx.sym.BatchNorm(data=shortcut_conv, fix_gamma=False, eps=2e-5, momentum=bn_mom, name=name + '_sc_bn')
+            shortcut_conv = mx.sym.Convolution(
+                data=data,
+                num_filter=num_filter,
+                kernel=(1, 1),
+                stride=stride,
+                no_bias=True,
+                workspace=workspace,
+                name=f'{name}_sc',
+            )
+            shortcut = mx.sym.BatchNorm(
+                data=shortcut_conv,
+                fix_gamma=False,
+                eps=2e-5,
+                momentum=bn_mom,
+                name=f'{name}_sc_bn',
+            )
 
         if memonger:
             shortcut._set_attr(mirror_stage='True')
         eltwise =  bn3 + shortcut
-        return mx.sym.Activation(data=eltwise, act_type='relu', name=name + '_relu')
     else:
 
-        conv1 = mx.sym.Convolution(data=data, num_filter=num_filter, kernel=(3,3), stride=stride, pad=(1,1),
-                                      no_bias=True, workspace=workspace, name=name + '_conv1')
-        bn1 = mx.sym.BatchNorm(data=conv1, fix_gamma=False, momentum=bn_mom, eps=2e-5, name=name + '_bn1')
-        act1 = mx.sym.Activation(data=bn1, act_type='relu', name=name + '_relu1')
+        conv1 = mx.sym.Convolution(
+            data=data,
+            num_filter=num_filter,
+            kernel=(3, 3),
+            stride=stride,
+            pad=(1, 1),
+            no_bias=True,
+            workspace=workspace,
+            name=f'{name}_conv1',
+        )
+        bn1 = mx.sym.BatchNorm(
+            data=conv1,
+            fix_gamma=False,
+            momentum=bn_mom,
+            eps=2e-5,
+            name=f'{name}_bn1',
+        )
+        act1 = mx.sym.Activation(data=bn1, act_type='relu', name=f'{name}_relu1')
 
 
-        conv2 = mx.sym.Convolution(data=act1, num_filter=num_filter, kernel=(3,3), stride=(1,1), pad=(1,1),
-                                      no_bias=True, workspace=workspace, name=name + '_conv2')
-        bn2 = mx.sym.BatchNorm(data=conv2, fix_gamma=False, momentum=bn_mom, eps=2e-5, name=name + '_bn2')
+        conv2 = mx.sym.Convolution(
+            data=act1,
+            num_filter=num_filter,
+            kernel=(3, 3),
+            stride=(1, 1),
+            pad=(1, 1),
+            no_bias=True,
+            workspace=workspace,
+            name=f'{name}_conv2',
+        )
+        bn2 = mx.sym.BatchNorm(
+            data=conv2,
+            fix_gamma=False,
+            momentum=bn_mom,
+            eps=2e-5,
+            name=f'{name}_bn2',
+        )
 
         if dim_match:
             shortcut = data
         else:
-            shortcut_conv = mx.sym.Convolution(data=data, num_filter=num_filter, kernel=(1,1), stride=stride, no_bias=True,
-                                            workspace=workspace, name=name+'_sc')
-            shortcut = mx.sym.BatchNorm(data=shortcut_conv, fix_gamma=False, eps=2e-5, momentum=bn_mom, name=name + '_sc_bn')
+            shortcut_conv = mx.sym.Convolution(
+                data=data,
+                num_filter=num_filter,
+                kernel=(1, 1),
+                stride=stride,
+                no_bias=True,
+                workspace=workspace,
+                name=f'{name}_sc',
+            )
+            shortcut = mx.sym.BatchNorm(
+                data=shortcut_conv,
+                fix_gamma=False,
+                eps=2e-5,
+                momentum=bn_mom,
+                name=f'{name}_sc_bn',
+            )
 
         if memonger:
             shortcut._set_attr(mirror_stage='True')
         eltwise = bn2 + shortcut
-        return mx.sym.Activation(data=eltwise, act_type='relu', name=name + '_relu')
+
+    return mx.sym.Activation(data=eltwise, act_type='relu', name=f'{name}_relu')
 
 def resnext(units, num_stages, filter_list, num_classes, num_group, image_shape, bottle_neck=True, bn_mom=0.9, workspace=256, dtype='float32', memonger=False):
     """Return ResNeXt symbol of
@@ -124,9 +221,8 @@ def resnext(units, num_stages, filter_list, num_classes, num_group, image_shape,
     data = mx.sym.Variable(name='data')
     if dtype == 'float32':
         data = mx.sym.identity(data=data, name='id')
-    else:
-        if dtype == 'float16':
-            data = mx.sym.Cast(data=data, dtype=np.float16)
+    elif dtype == 'float16':
+        data = mx.sym.Cast(data=data, dtype=np.float16)
     data = mx.sym.BatchNorm(data=data, fix_gamma=True, eps=2e-5, momentum=bn_mom, name='bn_data')
     (nchannel, height, width) = image_shape
     if height <= 32:            # such as cifar10
@@ -172,7 +268,9 @@ def get_symbol(num_classes, num_layers, image_shape, num_group=32, conv_workspac
             filter_list = [16, 16, 32, 64]
             bottle_neck = False
         else:
-            raise ValueError("no experiments done on num_layers {}, you can do it yourself".format(num_layers))
+            raise ValueError(
+                f"no experiments done on num_layers {num_layers}, you can do it yourself"
+            )
         units = per_unit * num_stages
     else:
         if num_layers >= 50:
@@ -197,7 +295,9 @@ def get_symbol(num_classes, num_layers, image_shape, num_group=32, conv_workspac
         elif num_layers == 269:
             units = [3, 30, 48, 8]
         else:
-            raise ValueError("no experiments done on num_layers {}, you can do it yourself".format(num_layers))
+            raise ValueError(
+                f"no experiments done on num_layers {num_layers}, you can do it yourself"
+            )
 
     return resnext(units      = units,
                   num_stages  = num_stages,

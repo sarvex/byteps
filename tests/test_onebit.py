@@ -34,10 +34,7 @@ def onebit(x, scaling):
         l1 = np.linalg.norm(x.flatten(), 1)
     sign = x < 0
     sign = -((sign << 1) - 1)
-    if scaling:
-        return l1 / len(x.flatten()) * sign
-    else:
-        return sign
+    return l1 / len(x.flatten()) * sign if scaling else sign
 
 
 class OnebitTestCase(unittest.TestCase, metaclass=MetaTest):
@@ -66,12 +63,11 @@ class OnebitTestCase(unittest.TestCase, metaclass=MetaTest):
 
         train_data = fake_data(batch_size=batch_size)
 
-        params = {}
-
-        for i, param in enumerate(trainer._params):
-            if param.grad_req != 'null':
-                params[i] = param._data[0].asnumpy()
-
+        params = {
+            i: param._data[0].asnumpy()
+            for i, param in enumerate(trainer._params)
+            if param.grad_req != 'null'
+        }
         for it, batch in tqdm(enumerate(train_data)):
             data = batch[0].as_in_context(ctx)
             label = batch[1].as_in_context(ctx)

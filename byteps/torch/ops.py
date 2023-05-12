@@ -54,7 +54,7 @@ _handle_map = {}
 def _check_function(function_factory, tensor):
     function = function_factory(tensor)
     if not hasattr(c_lib, function):
-        raise ValueError('Tensor type %s is not supported.' % tensor.type())
+        raise ValueError(f'Tensor type {tensor.type()} is not supported.')
     if not tensor.is_contiguous():
         raise ValueError('Tensor is required to be contiguous.')
     return function
@@ -146,7 +146,7 @@ def push_pull(tensor, average=True, name=None, version=0, priority=0, compressio
         A tensor of the same shape and type as `tensor`, averaged or summed across all
         processes.
     """
-    if name == None:
+    if name is None:
         raise AssertionError("To manually call push_pull, you must specify a name by name=...")
     tensor_compressed, ctx = compression.compress(tensor)
     summed_tensor_compressed = BytePSPushPull.apply(

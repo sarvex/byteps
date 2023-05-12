@@ -64,5 +64,4 @@ def get_symbol(num_classes, dtype='float32', **kwargs):
     fc3 = mx.sym.FullyConnected(name='fc3', data=dropout2, num_hidden=num_classes)
     if dtype == 'float16':
         fc3 = mx.sym.Cast(data=fc3, dtype=np.float32)
-    softmax = mx.sym.SoftmaxOutput(data=fc3, name='softmax')
-    return softmax
+    return mx.sym.SoftmaxOutput(data=fc3, name='softmax')

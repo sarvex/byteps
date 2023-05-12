@@ -34,61 +34,182 @@ fix_gamma = False
 
 
 def ConvFactory(data, num_filter, kernel, stride=(1,1), pad=(0, 0), name=None, suffix='', attr={}):
-    conv = mx.symbol.Convolution(data=data, num_filter=num_filter, kernel=kernel, stride=stride, pad=pad, name='conv_%s%s' %(name, suffix))
-    bn = mx.symbol.BatchNorm(data=conv, fix_gamma=fix_gamma, eps=eps, momentum=bn_mom, name='bn_%s%s' %(name, suffix))
-    act = mx.symbol.Activation(data=bn, act_type='relu', name='relu_%s%s' %(name, suffix), attr=attr)
-    return act
+    conv = mx.symbol.Convolution(
+        data=data,
+        num_filter=num_filter,
+        kernel=kernel,
+        stride=stride,
+        pad=pad,
+        name=f'conv_{name}{suffix}',
+    )
+    bn = mx.symbol.BatchNorm(
+        data=conv,
+        fix_gamma=fix_gamma,
+        eps=eps,
+        momentum=bn_mom,
+        name=f'bn_{name}{suffix}',
+    )
+    return mx.symbol.Activation(
+        data=bn, act_type='relu', name=f'relu_{name}{suffix}', attr=attr
+    )
 
 def InceptionFactoryA(data, num_1x1, num_3x3red, num_3x3, num_d3x3red, num_d3x3, pool, proj, name):
     # 1x1
-    c1x1 = ConvFactory(data=data, num_filter=num_1x1, kernel=(1, 1), name=('%s_1x1' % name))
+    c1x1 = ConvFactory(
+        data=data, num_filter=num_1x1, kernel=(1, 1), name=f'{name}_1x1'
+    )
     # 3x3 reduce + 3x3
-    c3x3r = ConvFactory(data=data, num_filter=num_3x3red, kernel=(1, 1), name=('%s_3x3' % name), suffix='_reduce')
-    c3x3 = ConvFactory(data=c3x3r, num_filter=num_3x3, kernel=(3, 3), pad=(1, 1), name=('%s_3x3' % name))
+    c3x3r = ConvFactory(
+        data=data,
+        num_filter=num_3x3red,
+        kernel=(1, 1),
+        name=f'{name}_3x3',
+        suffix='_reduce',
+    )
+    c3x3 = ConvFactory(
+        data=c3x3r,
+        num_filter=num_3x3,
+        kernel=(3, 3),
+        pad=(1, 1),
+        name=f'{name}_3x3',
+    )
     # double 3x3 reduce + double 3x3
-    cd3x3r = ConvFactory(data=data, num_filter=num_d3x3red, kernel=(1, 1), name=('%s_double_3x3' % name), suffix='_reduce')
-    cd3x3 = ConvFactory(data=cd3x3r, num_filter=num_d3x3, kernel=(3, 3), pad=(1, 1), name=('%s_double_3x3_0' % name))
-    cd3x3 = ConvFactory(data=cd3x3, num_filter=num_d3x3, kernel=(3, 3), pad=(1, 1), name=('%s_double_3x3_1' % name))
+    cd3x3r = ConvFactory(
+        data=data,
+        num_filter=num_d3x3red,
+        kernel=(1, 1),
+        name=f'{name}_double_3x3',
+        suffix='_reduce',
+    )
+    cd3x3 = ConvFactory(
+        data=cd3x3r,
+        num_filter=num_d3x3,
+        kernel=(3, 3),
+        pad=(1, 1),
+        name=f'{name}_double_3x3_0',
+    )
+    cd3x3 = ConvFactory(
+        data=cd3x3,
+        num_filter=num_d3x3,
+        kernel=(3, 3),
+        pad=(1, 1),
+        name=f'{name}_double_3x3_1',
+    )
     # pool + proj
-    pooling = mx.symbol.Pooling(data=data, kernel=(3, 3), stride=(1, 1), pad=(1, 1), pool_type=pool, name=('%s_pool_%s_pool' % (pool, name)))
-    cproj = ConvFactory(data=pooling, num_filter=proj, kernel=(1, 1), name=('%s_proj' %  name))
-    # concat
-    concat = mx.symbol.Concat(*[c1x1, c3x3, cd3x3, cproj], name='ch_concat_%s_chconcat' % name)
-    return concat
+    pooling = mx.symbol.Pooling(
+        data=data,
+        kernel=(3, 3),
+        stride=(1, 1),
+        pad=(1, 1),
+        pool_type=pool,
+        name=f'{pool}_pool_{name}_pool',
+    )
+    cproj = ConvFactory(
+        data=pooling, num_filter=proj, kernel=(1, 1), name=f'{name}_proj'
+    )
+    return mx.symbol.Concat(
+        *[c1x1, c3x3, cd3x3, cproj], name=f'ch_concat_{name}_chconcat'
+    )
 
 def InceptionFactoryB(data, num_3x3red, num_3x3, num_d3x3red, num_d3x3, name):
     # 3x3 reduce + 3x3
-    c3x3r = ConvFactory(data=data, num_filter=num_3x3red, kernel=(1, 1), name=('%s_3x3' % name), suffix='_reduce')
-    c3x3 = ConvFactory(data=c3x3r, num_filter=num_3x3, kernel=(3, 3), pad=(1, 1), stride=(2, 2), name=('%s_3x3' % name))
+    c3x3r = ConvFactory(
+        data=data,
+        num_filter=num_3x3red,
+        kernel=(1, 1),
+        name=f'{name}_3x3',
+        suffix='_reduce',
+    )
+    c3x3 = ConvFactory(
+        data=c3x3r,
+        num_filter=num_3x3,
+        kernel=(3, 3),
+        pad=(1, 1),
+        stride=(2, 2),
+        name=f'{name}_3x3',
+    )
     # double 3x3 reduce + double 3x3
-    cd3x3r = ConvFactory(data=data, num_filter=num_d3x3red, kernel=(1, 1),  name=('%s_double_3x3' % name), suffix='_reduce')
-    cd3x3 = ConvFactory(data=cd3x3r, num_filter=num_d3x3, kernel=(3, 3), pad=(1, 1), stride=(1, 1), name=('%s_double_3x3_0' % name))
-    cd3x3 = ConvFactory(data=cd3x3, num_filter=num_d3x3, kernel=(3, 3), pad=(1, 1), stride=(2, 2), name=('%s_double_3x3_1' % name))
+    cd3x3r = ConvFactory(
+        data=data,
+        num_filter=num_d3x3red,
+        kernel=(1, 1),
+        name=f'{name}_double_3x3',
+        suffix='_reduce',
+    )
+    cd3x3 = ConvFactory(
+        data=cd3x3r,
+        num_filter=num_d3x3,
+        kernel=(3, 3),
+        pad=(1, 1),
+        stride=(1, 1),
+        name=f'{name}_double_3x3_0',
+    )
+    cd3x3 = ConvFactory(
+        data=cd3x3,
+        num_filter=num_d3x3,
+        kernel=(3, 3),
+        pad=(1, 1),
+        stride=(2, 2),
+        name=f'{name}_double_3x3_1',
+    )
     # pool + proj
-    pooling = mx.symbol.Pooling(data=data, kernel=(3, 3), stride=(2, 2), pad=(1, 1), pool_type="max", name=('max_pool_%s_pool' % name))
-    # concat
-    concat = mx.symbol.Concat(*[c3x3, cd3x3, pooling], name='ch_concat_%s_chconcat' % name)
-    return concat
+    pooling = mx.symbol.Pooling(
+        data=data,
+        kernel=(3, 3),
+        stride=(2, 2),
+        pad=(1, 1),
+        pool_type="max",
+        name=f'max_pool_{name}_pool',
+    )
+    return mx.symbol.Concat(
+        *[c3x3, cd3x3, pooling], name=f'ch_concat_{name}_chconcat'
+    )
 
 # A Simple Downsampling Factory
 def DownsampleFactory(data, ch_3x3, name, attr):
     # conv 3x3
-    conv = ConvFactory(data=data, name=name+'_conv',kernel=(3, 3), stride=(2, 2), num_filter=ch_3x3, pad=(1, 1), attr=attr)
+    conv = ConvFactory(
+        data=data,
+        name=f'{name}_conv',
+        kernel=(3, 3),
+        stride=(2, 2),
+        num_filter=ch_3x3,
+        pad=(1, 1),
+        attr=attr,
+    )
     # pool
-    pool = mx.symbol.Pooling(data=data, name=name+'_pool',kernel=(3, 3), stride=(2, 2), pad=(1, 1), pool_type='max', attr=attr)
-    # concat
-    concat = mx.symbol.Concat(*[conv, pool], name=name+'_ch_concat')
-    return concat
+    pool = mx.symbol.Pooling(
+        data=data,
+        name=f'{name}_pool',
+        kernel=(3, 3),
+        stride=(2, 2),
+        pad=(1, 1),
+        pool_type='max',
+        attr=attr,
+    )
+    return mx.symbol.Concat(*[conv, pool], name=f'{name}_ch_concat')
 
 # A Simple module
 def SimpleFactory(data, ch_1x1, ch_3x3, name, attr):
     # 1x1
-    conv1x1 = ConvFactory(data=data, name=name+'_1x1', kernel=(1, 1), pad=(0, 0), num_filter=ch_1x1, attr=attr)
+    conv1x1 = ConvFactory(
+        data=data,
+        name=f'{name}_1x1',
+        kernel=(1, 1),
+        pad=(0, 0),
+        num_filter=ch_1x1,
+        attr=attr,
+    )
     # 3x3
-    conv3x3 = ConvFactory(data=data, name=name+'_3x3', kernel=(3, 3), pad=(1, 1), num_filter=ch_3x3, attr=attr)
-    #concat
-    concat = mx.symbol.Concat(*[conv1x1, conv3x3], name=name+'_ch_concat')
-    return concat
+    conv3x3 = ConvFactory(
+        data=data,
+        name=f'{name}_3x3',
+        kernel=(3, 3),
+        pad=(1, 1),
+        num_filter=ch_3x3,
+        attr=attr,
+    )
+    return mx.symbol.Concat(*[conv1x1, conv3x3], name=f'{name}_ch_concat')
 
 
 def get_symbol(num_classes, image_shape, **kwargs):
@@ -140,5 +261,4 @@ def get_symbol(num_classes, image_shape, **kwargs):
     # linear classifier
     flatten = mx.symbol.Flatten(data=pool)
     fc1 = mx.symbol.FullyConnected(data=flatten, num_hidden=num_classes)
-    softmax = mx.symbol.SoftmaxOutput(data=fc1, name='softmax')
-    return softmax
+    return mx.symbol.SoftmaxOutput(data=fc1, name='softmax')

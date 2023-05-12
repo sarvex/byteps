@@ -14,6 +14,7 @@
 # limitations under the License.
 """This file is modified from `horovod/examples/mxnet_mnist.py`, using gluon
 style MNIST dataset and data_loader."""
+
 import argparse
 import logging
 import subprocess
@@ -65,10 +66,8 @@ parser.add_argument('--logging-file', type=str, default='baseline',
 args = parser.parse_args()
 
 
-if not args.no_cuda:
-    # Disable CUDA if there are no GPUs.
-    if mx.context.num_gpus() == 0:
-        args.no_cuda = True
+if not args.no_cuda and mx.context.num_gpus() == 0:
+    args.no_cuda = True
 
 # Initialize BytePS
 bps.init()
@@ -124,7 +123,7 @@ def conv_nets():
 # Function to evaluate accuracy for a model
 def evaluate(model, data_iter, context):
     metric = mx.metric.Accuracy()
-    for _, batch in enumerate(data_iter):
+    for batch in data_iter:
         data = batch[0].as_in_context(context)
         label = batch[1].as_in_context(context)
         output = model(data)

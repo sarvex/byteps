@@ -233,9 +233,8 @@ def _is_device_list_single_worker(devices):
     raise ValueError("Local device string cannot have job specified other "
                      "than 'localhost'")
 
-  if num_workers == 1 and not all_local:
-    if any(d.task is None for d in specs):
-      raise ValueError("Remote device string must have task specified.")
+  if num_workers == 1 and not all_local and any(d.task is None for d in specs):
+    raise ValueError("Remote device string must have task specified.")
 
   return num_workers == 1
 
@@ -308,25 +307,24 @@ def _infer_num_gpus_per_worker(devices):
   """
   if _is_device_list_single_worker(devices):
     return sum(1 for d in devices if _is_gpu_device(d))
-  else:
-    device_dict = _group_device_list(devices)
-    num_gpus = None
-    for _, devices_in_task in device_dict.items():
-      for device_in_task in devices_in_task:
-        if num_gpus is None:
-          num_gpus = sum(1 for d in device_in_task if _is_gpu_device(d))
+  device_dict = _group_device_list(devices)
+  num_gpus = None
+  for _, devices_in_task in device_dict.items():
+    for device_in_task in devices_in_task:
+      if num_gpus is None:
+        num_gpus = sum(1 for d in device_in_task if _is_gpu_device(d))
 
-        # Verify other workers have the same number of GPUs.
-        elif num_gpus != sum(1 for d in device_in_task if _is_gpu_device(d)):
-          raise ValueError("All workers should have the same number of GPUs.")
+      # Verify other workers have the same number of GPUs.
+      elif num_gpus != sum(1 for d in device_in_task if _is_gpu_device(d)):
+        raise ValueError("All workers should have the same number of GPUs.")
 
-        for d in device_in_task:
-          d_spec = tf_device.DeviceSpec.from_string(d)
-          if (d_spec.device_type == "GPU" and
-              d_spec.device_index >= num_gpus):
-            raise ValueError("GPU `device_index` on a worker should be "
-                             "consecutive and start from 0.")
-    return num_gpus
+      for d in device_in_task:
+        d_spec = tf_device.DeviceSpec.from_string(d)
+        if (d_spec.device_type == "GPU" and
+            d_spec.device_index >= num_gpus):
+          raise ValueError("GPU `device_index` on a worker should be "
+                           "consecutive and start from 0.")
+  return num_gpus
 
 
 def all_local_devices(num_gpus=None):
@@ -393,15 +391,14 @@ class MyMirroredExtended(distribute_lib.StrategyExtendedV1):
       if devices and not _is_device_list_single_worker(devices):
         raise RuntimeError("In-graph multi-worker training with "
                            "`MirroredStrategy` is not supported in eager mode.")
-      else:
-        if TFConfigClusterResolver().cluster_spec().as_dict():
-          # if you are executing in eager mode, only the single machine code
-          # path is supported.
-          logging.info("Initializing local devices since in-graph multi-worker "
-                       "training with `MirroredStrategy` is not supported in "
-                       "eager mode. TF_CONFIG will be ignored when "
-                       "when initializing `MirroredStrategy`.")
-        devices = devices or all_local_devices()
+      if TFConfigClusterResolver().cluster_spec().as_dict():
+        # if you are executing in eager mode, only the single machine code
+        # path is supported.
+        logging.info("Initializing local devices since in-graph multi-worker "
+                     "training with `MirroredStrategy` is not supported in "
+                     "eager mode. TF_CONFIG will be ignored when "
+                     "when initializing `MirroredStrategy`.")
+      devices = devices or all_local_devices()
     else:
       devices = devices or all_devices()
 
@@ -422,8 +419,8 @@ class MyMirroredExtended(distribute_lib.StrategyExtendedV1):
     # coordinator as well.
     assert devices, "Must specify at least one device."
     devices = tuple(device_util.resolve(d) for d in devices)
-    assert len(set(devices)) == len(devices), (
-        "No duplicates allowed in `devices` argument: %s" % (devices,))
+    assert len(set(devices)) == len(
+        devices), f"No duplicates allowed in `devices` argument: {devices}"
     if _is_device_list_single_worker(devices):
       self._initialize_single_worker(devices)
     else:
@@ -501,21 +498,20 @@ class MyMirroredExtended(distribute_lib.StrategyExtendedV1):
     """Return the initial value for variables on a replica."""
     if replica_id == 0:
       return kwargs["initial_value"]
-    else:
-      assert primary_var is not None
-      assert device is not None
-      assert kwargs is not None
+    assert primary_var is not None
+    assert device is not None
+    assert kwargs is not None
 
-      def initial_value_fn():
-        if context.executing_eagerly() or ops.inside_function():
-          init_value = primary_var.value()
+    def initial_value_fn():
+      if context.executing_eagerly() or ops.inside_function():
+        init_value = primary_var.value()
+        return array_ops.identity(init_value)
+      else:
+        with ops.device(device):
+          init_value = primary_var.initial_value
           return array_ops.identity(init_value)
-        else:
-          with ops.device(device):
-            init_value = primary_var.initial_value
-            return array_ops.identity(init_value)
 
-      return initial_value_fn
+    return initial_value_fn
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a mirrored variable. See `DistributionStrategy.scope`."""
@@ -574,13 +570,14 @@ class MyMirroredExtended(distribute_lib.StrategyExtendedV1):
       self,
       input_fn,
       replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
-    input_contexts = []
     num_workers = self._input_workers.num_workers
-    for i in range(num_workers):
-      input_contexts.append(distribute_lib.InputContext(
-          num_input_pipelines=num_workers,
-          input_pipeline_id=i,
-          num_replicas_in_sync=self._num_replicas_in_sync))
+    input_contexts = [
+        distribute_lib.InputContext(
+            num_input_pipelines=num_workers,
+            input_pipeline_id=i,
+            num_replicas_in_sync=self._num_replicas_in_sync,
+        ) for i in range(num_workers)
+    ]
     return input_lib.InputFunctionIterator(input_fn, self._input_workers,
                                            input_contexts,
                                            self._container_strategy())
@@ -597,14 +594,14 @@ class MyMirroredExtended(distribute_lib.StrategyExtendedV1):
         numpy_input, self._host_input_device, session)
 
   def _experimental_distribute_datasets_from_function(self, dataset_fn):
-    input_contexts = []
     num_workers = self._input_workers.num_workers
-    for i in range(num_workers):
-      input_contexts.append(distribute_lib.InputContext(
-          num_input_pipelines=num_workers,
-          input_pipeline_id=i,
-          num_replicas_in_sync=self._num_replicas_in_sync))
-
+    input_contexts = [
+        distribute_lib.InputContext(
+            num_input_pipelines=num_workers,
+            input_pipeline_id=i,
+            num_replicas_in_sync=self._num_replicas_in_sync,
+        ) for i in range(num_workers)
+    ]
     return input_lib.get_distributed_datasets_from_function(
         dataset_fn,
         self._input_workers,
@@ -784,9 +781,7 @@ class MyMirroredExtended(distribute_lib.StrategyExtendedV1):
     return array_ops.identity(replica_local_var.get())
 
   def _local_results(self, val):
-    if isinstance(val, values.DistributedValues):
-      return val.values
-    return (val,)
+    return val.values if isinstance(val, values.DistributedValues) else (val, )
 
   def value_container(self, val):
     return values.value_container(val)

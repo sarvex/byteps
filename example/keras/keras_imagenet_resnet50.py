@@ -63,13 +63,14 @@ config.gpu_options.allow_growth = True
 config.gpu_options.visible_device_list = str(bps.local_rank())
 K.set_session(tf.Session(config=config))
 
-# If set > 0, will resume training from a given checkpoint.
-resume_from_epoch = 0
-for try_epoch in range(args.epochs, 0, -1):
-    if os.path.exists(args.checkpoint_format.format(epoch=try_epoch)):
-        resume_from_epoch = try_epoch
-        break
-
+resume_from_epoch = next(
+    (
+        try_epoch
+        for try_epoch in range(args.epochs, 0, -1)
+        if os.path.exists(args.checkpoint_format.format(epoch=try_epoch))
+    ),
+    0,
+)
 # BytePS: broadcast resume_from_epoch from rank 0 (which will have
 # checkpoints) to other ranks.
 resume_from_epoch = bps.broadcast(resume_from_epoch, 0, name='resume_from_epoch')

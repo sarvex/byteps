@@ -68,7 +68,7 @@ def allocate_cpu(local_size):
                         cpu_ids = cpu_ids[:len(cpu_ids) // 2]
                     ret.append(cpu_ids)
         else:
-            print("NUMA PATH %s NOT FOUND" % NUMA_PATH)
+            print(f"NUMA PATH {NUMA_PATH} NOT FOUND")
         return ret
 
     def _get_allocation(nodes, quota, cpu_num, cpu_blacklist):
@@ -154,7 +154,7 @@ def check_env():
         required_envs += WORKER_REQUIRED_ENVS
     for env in required_envs:
         if env not in os.environ:
-            print("The env " + env + " is missing")
+            print(f"The env {env} is missing")
             os._exit(0)
 
 
@@ -164,8 +164,8 @@ def worker(local_rank, local_size, command, allocation=None):
     my_env["BYTEPS_LOCAL_SIZE"] = str(local_size)
     if int(os.getenv("BYTEPS_ENABLE_GDB", 0)):
         if command.find("python") != 0:
-            command = "python " + command
-        command = "gdb -ex 'run' -ex 'bt' -batch --args " + command
+            command = f"python {command}"
+        command = f"gdb -ex 'run' -ex 'bt' -batch --args {command}"
 
     if allocation:
         print("enable NUMA finetune...")
@@ -175,9 +175,9 @@ def worker(local_rank, local_size, command, allocation=None):
             numa = "numactl --physcpubind "
             for cpu_set in allocation:
                 if len(cpu_set) == 1:
-                    numa += "{},".format(cpu_set[0])
+                    numa += f"{cpu_set[0]},"
                 else:
-                    numa += "{}-{},".format(cpu_set[0], cpu_set[-1])
+                    numa += f"{cpu_set[0]}-{cpu_set[-1]},"
             numa = numa.strip(',') + ' '
             command = numa + command
             print("Command: %s\n" % command)
@@ -219,9 +219,8 @@ def done_callback(idx):
         cv.notify()
 
 def join_threads(threads):
-    count = 0
     num = len(threads)
-    while count < num:
+    for _ in range(num):
         with cv:
             while not done_threads:
                 cv.wait()
@@ -229,7 +228,6 @@ def join_threads(threads):
             done_threads.pop()
         threads[idx].join()
         print("BytePS launcher: joined local rank ", idx)
-        count += 1
 
 def launch_bps():
     print("BytePS launching " + os.environ["DMLC_ROLE"])
@@ -246,8 +244,9 @@ def launch_bps():
 
         bind_to_cores = os.getenv("BYTEPS_NUMA_ON", "1") == "1"
         if bind_to_cores:
-            user_override = os.getenv("BYTEPS_VISIBLE_CPU_CORES", "").strip()
-            if user_override:
+            if user_override := os.getenv(
+                "BYTEPS_VISIBLE_CPU_CORES", ""
+            ).strip():
                 allocations = parse_num_range(user_override)
             else:
                 allocations = allocate_cpu(local_size)
@@ -270,7 +269,7 @@ def launch_bps():
          int(os.environ.get("DMLC_NUM_WORKER", "1")) > 1:
         command = "python3 -c 'import byteps.server'"
         if int(os.getenv("BYTEPS_ENABLE_GDB", 0)):
-            command = "gdb -ex 'run' -ex 'bt' -batch --args " + command
+            command = f"gdb -ex 'run' -ex 'bt' -batch --args {command}"
         print("Command: %s\n" % command, flush=True)
         my_env = os.environ.copy()
         subprocess.check_call(command, env=my_env,

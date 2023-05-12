@@ -30,11 +30,10 @@ __date__ = '18/4/3'
 import mxnet as mx
 
 def relu6(data, prefix):
-    return mx.sym.clip(data,0,6,name='%s-relu6'%prefix)
+    return mx.sym.clip(data, 0, 6, name=f'{prefix}-relu6')
 
 def shortcut(data_in, data_residual, prefix):
-    out=mx.sym.elemwise_add(data_in, data_residual, name='%s-shortcut'%prefix)
-    return out
+    return mx.sym.elemwise_add(data_in, data_residual, name=f'{prefix}-shortcut')
 
 def mobilenet_unit(data, num_filter=1, kernel=(1, 1), stride=(1, 1), pad=(0, 0), num_group=1, if_act=True, prefix=''):
     conv = mx.sym.Convolution(
@@ -45,13 +44,16 @@ def mobilenet_unit(data, num_filter=1, kernel=(1, 1), stride=(1, 1), pad=(0, 0),
         stride=stride,
         pad=pad,
         no_bias=True,
-        name='%s-conv2d'%prefix)
-    bn = mx.sym.BatchNorm(data=conv, name='%s-batchnorm'%prefix, fix_gamma=False, use_global_stats=False, eps=1e-5)
-    if if_act:
-        act = relu6(bn, prefix)
-        return act
-    else:
-        return bn
+        name=f'{prefix}-conv2d',
+    )
+    bn = mx.sym.BatchNorm(
+        data=conv,
+        name=f'{prefix}-batchnorm',
+        fix_gamma=False,
+        use_global_stats=False,
+        eps=1e-5,
+    )
+    return relu6(bn, prefix) if if_act else bn
 
 def inverted_residual_unit(data, num_in_filter, num_filter, ifshortcut, stride, kernel, pad, expansion_factor, prefix):
     num_expfilter = int(round(num_in_filter*expansion_factor))
@@ -59,22 +61,22 @@ def inverted_residual_unit(data, num_in_filter, num_filter, ifshortcut, stride, 
     channel_expand = mobilenet_unit(
         data=data,
         num_filter=num_expfilter,
-        kernel=(1,1),
-        stride=(1,1),
-        pad=(0,0),
+        kernel=(1, 1),
+        stride=(1, 1),
+        pad=(0, 0),
         num_group=1,
         if_act=True,
-        prefix='%s-exp'%prefix,
+        prefix=f'{prefix}-exp',
     )
     bottleneck_conv = mobilenet_unit(
-        data= channel_expand,
+        data=channel_expand,
         num_filter=num_expfilter,
         stride=stride,
         kernel=kernel,
         pad=pad,
         num_group=num_expfilter,
         if_act=True,
-        prefix='%s-depthwise'%prefix,
+        prefix=f'{prefix}-depthwise',
     )
     linear_out = mobilenet_unit(
         data=bottleneck_conv,
@@ -84,15 +86,14 @@ def inverted_residual_unit(data, num_in_filter, num_filter, ifshortcut, stride, 
         pad=(0, 0),
         num_group=1,
         if_act=False,
-        prefix='%s-linear'%prefix
+        prefix=f'{prefix}-linear',
     )
     if ifshortcut:
-        out = shortcut(
+        return shortcut(
             data_in=data,
             data_residual=linear_out,
             prefix=prefix,
         )
-        return out
     else:
         return linear_out
 
@@ -102,11 +103,11 @@ def inverted_residual_blocks(data, in_c, t, c, n, s, prefix):
         num_in_filter=in_c,
         num_filter=c,
         ifshortcut=False,
-        stride=(s,s),
-        kernel=(3,3),
-        pad=(1,1),
+        stride=(s, s),
+        kernel=(3, 3),
+        pad=(1, 1),
         expansion_factor=t,
-        prefix='%s-block0'%prefix
+        prefix=f'{prefix}-block0',
     )
 
     last_residual_block = first_block
@@ -194,9 +195,7 @@ class MobileNetV2(object):
                               pool_type="avg", name="global_pool", global_pool=True)
         flatten = mx.sym.Flatten(data=pool, name="flatten")
         fc = mx.symbol.FullyConnected(data=flatten, num_hidden=class_num, name='fc')
-        softmax = mx.symbol.SoftmaxOutput(data=fc, name='softmax')
-
-        return softmax
+        return mx.symbol.SoftmaxOutput(data=fc, name='softmax')
 
     def __call__(self, class_num=1000, layer_out=None, **configs):
         # build the whole architecture of mobilenet v2 here
@@ -206,13 +205,10 @@ class MobileNetV2(object):
 
         internals = sym.get_internals()
         if type(layer_out) is list or type(layer_out) is tuple:
-            layers_out = [internals[layer_nm.strip() + '_output'] for layer_nm in layer_out]
-            return layers_out
-        else:
-            layer_out = internals[layer_out.strip() + '_output']
-            return layer_out
+            return [internals[f'{layer_nm.strip()}_output'] for layer_nm in layer_out]
+        layer_out = internals[f'{layer_out.strip()}_output']
+        return layer_out
 
 def get_symbol(num_classes=1000, multiplier=1.0):
     mnetgen = MobileNetV2((224,224), multiplier=multiplier)
-    mnetv2_sym = mnetgen(class_num=num_classes, layer_out=None)
-    return mnetv2_sym
+    return mnetgen(class_num=num_classes, layer_out=None)

@@ -27,10 +27,9 @@ def get_env(envs_map):
     for k in keys:
         v = os.getenv(k)
         if v is not None:
-            envs.append('export ' + k + '=' + v + ';')
+            envs.append(f'export {k}={v};')
     # get ass_envs
-    for k, v in envs_map.items():
-        envs.append('export ' + str(k) + '=' + str(v) + ';')
+    envs.extend(f'export {str(k)}={str(v)};' for k, v in envs_map.items())
     return (' '.join(envs))
 
 def get_hosts_from_file(filename):
@@ -60,14 +59,31 @@ def start_ssh(prog, node, port, username, fname):
     if not os.path.exists(dirname):
         os.mkdir(dirname)
 
-    pname = dirname + '/' + fname
+    pname = f'{dirname}/{fname}'
     if username is not None:
         prog = 'ssh -o StrictHostKeyChecking=no ' + ' -l ' + username \
                + ' ' + node + ' -p ' + port + ' \'' + prog + '\'' \
                + ' > ' + pname + '.stdout' + ' 2>' + pname + '.stderr&'
     else:
-        prog = 'ssh -o StrictHostKeyChecking=no ' + node + ' -p ' + port + ' \'' + prog + '\'' \
-               + ' > ' + pname + '.stdout' + ' 2>' + pname + '.stderr&'
+        prog = (
+            (
+                (
+                    (
+                        (
+                            f'ssh -o StrictHostKeyChecking=no {node} -p {port}'
+                            + ' \''
+                            + prog
+                            + '\''
+                            + ' > '
+                        )
+                        + pname
+                    )
+                    + '.stdout'
+                )
+                + ' 2>'
+            )
+            + pname
+        ) + '.stderr&'
 
     thread = Thread(target=run, args=(prog,))
     thread.setDaemon(True)
@@ -92,13 +108,10 @@ def submit(args):
     pass_envs['DMLC_PS_ROOT_URI'] = str(args.scheduler_ip)
     pass_envs['DMLC_PS_ROOT_PORT'] = str(args.scheduler_port)
 
-    username = ''
-    if args.username is not None:
-        username = args.username
-
+    username = args.username if args.username is not None else ''
     threads = []
-    for (node, port) in [(args.scheduler_ip, args.scheduler_ssh_port)]:
-        name = 'scheduler'
+    name = 'scheduler'
+    for node, port in [(args.scheduler_ip, args.scheduler_ssh_port)]:
         pass_envs['DMLC_ROLE'] = name
         prog = get_env(pass_envs) + (' '.join(args.command))
         threads.append(start_ssh(prog, node, port, username, name))
@@ -108,8 +121,8 @@ def submit(args):
         pass_envs['DMLC_WORKER_ID'] = str(i)
         prog = get_env(pass_envs) + (' '.join(args.command))
         threads.append(start_ssh(prog, node, port, username, name + str(i)))
+    name = 'server'
     for i, (node, port) in enumerate(server_hosts):
-        name = 'server'
         pass_envs['DMLC_ROLE'] = name
         prog = get_env(pass_envs) + (' '.join(args.command))
         threads.append(start_ssh(prog, node, port, username, name + str(i)))

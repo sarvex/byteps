@@ -204,11 +204,11 @@ if _LegacyOptimizer is not None:
             self._enable_async = (int(os.getenv('BYTEPS_ENABLE_ASYNC', 0)) != 0)
             if self._enable_async:
                 assert int(os.getenv('DMLC_NUM_WORKER')) > 1, \
-                    "Async is only valid for distributed training"
+                            "Async is only valid for distributed training"
                 print('BytePS: enable asynchronous training')
 
             def push_pull_grads(grads):
-                with tf.name_scope(self._name + "_Push_Pull") as scope:
+                with tf.name_scope(f"{self._name}_Push_Pull") as scope:
                     if self._sparse_as_dense:
                         grads = [tf.convert_to_tensor(grad)
                                 if grad is not None and isinstance(grad, tf.IndexedSlices)
@@ -234,38 +234,33 @@ if _LegacyOptimizer is not None:
             push_pull the gradients before returning them.
             """
             gradients = self._optimizer.compute_gradients(*args, **kwargs)
-            if size() > 1 and not self._enable_async:
-                grads, vars = zip(*gradients)
-                avg_grads = self._push_pull_grads(grads)
-                return list(zip(avg_grads, vars))
-            else:
+            if size() <= 1 or self._enable_async:
                 return gradients
+            grads, vars = zip(*gradients)
+            avg_grads = self._push_pull_grads(grads)
+            return list(zip(avg_grads, vars))
 
         def apply_gradients(self, *args, **kwargs):
             """Calls this same method on the underlying optimizer."""
-            if self._enable_async: # async training
-                grads_and_vars = args[0]
-                _, vars = zip(*grads_and_vars)
-                old_tensors = []
-                for var in vars:
-                    old_tensors.append(tf.convert_to_tensor(var))
-                apply_ops = self._optimizer.apply_gradients(*args, **kwargs)
-                with tf.control_dependencies([apply_ops]):
-                    # get the delta
-                    for i, var in enumerate(vars):
-                        old_tensors[i] = tf.subtract(var, old_tensors[i])
-
-                    # reuse the _push_pul_grads(), but is transferring parameters
-                    updated_tensors = self._push_pull_grads(old_tensors)
-
-                    # copy the updated variable back
-                    assign_op_list = []
-                    for i, tensor in enumerate(updated_tensors):
-                        assign_op_list.append(tf.assign(vars[i], tensor))
-
-                return control_flow_ops.group(*assign_op_list)
-            else:
+            if not self._enable_async:
                 return self._optimizer.apply_gradients(*args, **kwargs)
+            grads_and_vars = args[0]
+            _, vars = zip(*grads_and_vars)
+            old_tensors = [tf.convert_to_tensor(var) for var in vars]
+            apply_ops = self._optimizer.apply_gradients(*args, **kwargs)
+            with tf.control_dependencies([apply_ops]):
+                # get the delta
+                for i, var in enumerate(vars):
+                    old_tensors[i] = tf.subtract(var, old_tensors[i])
+
+                # reuse the _push_pul_grads(), but is transferring parameters
+                updated_tensors = self._push_pull_grads(old_tensors)
+
+                assign_op_list = [
+                    tf.assign(vars[i], tensor)
+                    for i, tensor in enumerate(updated_tensors)
+                ]
+            return control_flow_ops.group(*assign_op_list)
 
         def get_slot(self, *args, **kwargs):
             """Calls this same method on the underlying optimizer."""
@@ -321,12 +316,11 @@ def DistributedOptimizer(optimizer, name=None, use_locking=False, device_dense='
     if isinstance(optimizer, _LegacyOptimizer):
         if op == Adasum:
             raise ValueError('op == Adasum is not supported yet with ')
-        else:
-            if backward_passes_per_step > 1:
-                raise ValueError('backward_passes_per_step>1 is not supported yet with '
-                                 'op != Adasum')
-            return _DistributedOptimizer(optimizer, name, use_locking, device_dense,
-                                        device_sparse, compression, sparse_as_dense, op)
+        if backward_passes_per_step > 1:
+            raise ValueError('backward_passes_per_step>1 is not supported yet with '
+                             'op != Adasum')
+        return _DistributedOptimizer(optimizer, name, use_locking, device_dense,
+                                    device_sparse, compression, sparse_as_dense, op)
     elif isinstance(optimizer, tf.keras.optimizers.Optimizer):
         if op == Adasum:
             raise ValueError('op == Adasum is not supported yet with Keras')
@@ -359,7 +353,7 @@ if hasattr(tf, 'GradientTape'):
             self._sparse_as_dense = sparse_as_dense
 
             def push_pull_grads(grads):
-                with tf.name_scope(self._name + "_Push_Pull") as scope:
+                with tf.name_scope(f"{self._name}_Push_Pull") as scope:
                     if self._sparse_as_dense:
                         grads = [tf.convert_to_tensor(grad)
                                  if grad is not None and isinstance(grad, tf.IndexedSlices)
@@ -375,11 +369,7 @@ if hasattr(tf, 'GradientTape'):
 
         def gradient(self, target, sources, output_gradients=None):
             gradients = super(self.__class__, self).gradient(target, sources, output_gradients)
-            if size() > 1:
-                avg_grads = self._push_pull_grads(gradients)
-                return avg_grads
-            else:
-                return gradients
+            return self._push_pull_grads(gradients) if size() > 1 else gradients
 
 
     def DistributedGradientTape(gradtape, device_dense='', device_sparse='',

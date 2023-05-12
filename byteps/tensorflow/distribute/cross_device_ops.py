@@ -124,14 +124,12 @@ def simple_broadcast(value, destinations, always_mirrored=False):
   if len(devices) == 1 and not always_mirrored:
     return cross_device_utils.copy_tensor_or_indexed_slices_to_device(
         value, devices[0])
-  else:
-    value_updates = []
-    for d in devices:
-      value_updates.append(
-          cross_device_utils.copy_tensor_or_indexed_slices_to_device(
-              value, d))
-    return value_lib.regroup(
-        device_map, value_updates, wrap_class=value_lib.Mirrored)
+  value_updates = [
+      cross_device_utils.copy_tensor_or_indexed_slices_to_device(value, d)
+      for d in devices
+  ]
+  return value_lib.regroup(
+      device_map, value_updates, wrap_class=value_lib.Mirrored)
 def _simple_reduce(per_replica_value, reduce_to_device, accumulation_fn,
                    reduce_op):
   # pylint: disable=g-missing-docstring
@@ -233,20 +231,17 @@ class MyCollectiveAllReduce(CollectiveAllReduce):
     return value_lib.regroup(device_map, index, wrap_class=value_lib.Mirrored)
 
   def batch_reduce_implementation(self, reduce_op, value_destination_pairs):
-    all_devices_match = _all_devices_match(value_destination_pairs)
-    if all_devices_match:
+    if all_devices_match := _all_devices_match(value_destination_pairs):
       return self._batch_all_reduce(reduce_op,
                                     [v[0] for v in value_destination_pairs])
-    else:
-      if not all_devices_match:
-        logging.log_first_n(
-            logging.WARN, "Efficient batch_reduce is not supported if "
-            "destinations are different.", 10)
+    logging.log_first_n(
+        logging.WARN, "Efficient batch_reduce is not supported if "
+        "destinations are different.", 10)
 
-      return [
-          self.reduce_implementation(reduce_op, t, destinations=v)
-          for t, v in value_destination_pairs
-      ]
+    return [
+        self.reduce_implementation(reduce_op, t, destinations=v)
+        for t, v in value_destination_pairs
+    ]
 
   def _make_gradient_chunks(self, per_replica_values, num_packs):
     """Make `per_replica_values` into chunks."""
@@ -330,9 +325,7 @@ class MyCollectiveAllReduce(CollectiveAllReduce):
           collective_reduced = my_build_collective_reduce(
               scaled_grads, self._num_workers, self._collective_keys, "Add",
               "Id", communication_hint)
-          result = []
-          for (_, v), g in zip(grad_and_vars, collective_reduced):
-            result.append([g, v])
+          result = [[g, v] for (_, v), g in zip(grad_and_vars, collective_reduced)]
           reduced_gv_list.append(result)
 
     new_device_grads = [list(x) for x in zip(*reduced_gv_list)]
@@ -379,9 +372,7 @@ class MyCollectiveAllReduce(CollectiveAllReduce):
                 dense_shape=scaled_grads[i].dense_shape)
             collective_reduced.append(reduced)
 
-          result = []
-          for (_, v), g in zip(grad_and_vars, collective_reduced):
-            result.append([g, v])
+          result = [[g, v] for (_, v), g in zip(grad_and_vars, collective_reduced)]
           reduced_gv_list.append(result)
 
     new_device_grads = [list(x) for x in zip(*reduced_gv_list)]
@@ -519,13 +510,30 @@ def my_collective_reduce(input, group_size, group_key, instance_key, merge_op, f
   tld = _ctx._thread_local_data
   if tld.is_eager:
     try:
-      _result = _pywrap_tensorflow.TFE_Py_FastPathExecute(
-        _ctx._context_handle, tld.device_name, "CollectiveReduce", name,
-        tld.op_callbacks, input, "group_size", group_size, "group_key",
-        group_key, "instance_key", instance_key, "merge_op", merge_op,
-        "final_op", final_op, "subdiv_offsets", subdiv_offsets, "wait_for",
-        wait_for, "communication_hint", communication_hint)
-      return _result
+      return _pywrap_tensorflow.TFE_Py_FastPathExecute(
+          _ctx._context_handle,
+          tld.device_name,
+          "CollectiveReduce",
+          name,
+          tld.op_callbacks,
+          input,
+          "group_size",
+          group_size,
+          "group_key",
+          group_key,
+          "instance_key",
+          instance_key,
+          "merge_op",
+          merge_op,
+          "final_op",
+          final_op,
+          "subdiv_offsets",
+          subdiv_offsets,
+          "wait_for",
+          wait_for,
+          "communication_hint",
+          communication_hint,
+      )
     except _core._FallbackException:
       try:
         return collective_reduce_eager_fallback(
@@ -601,8 +609,8 @@ class BytepsAllReduce(tf_cross_device_ops.AllReduceCrossDeviceOps):
     """
     if num_packs < 0:
       raise ValueError(
-          "NCCL all-reduce requires num_packs >= 0, but {} is specified".format(
-              num_packs))
+          f"NCCL all-reduce requires num_packs >= 0, but {num_packs} is specified"
+      )
     super(BytepsAllReduce, self).__init__(
         all_reduce_alg="nccl", num_packs=num_packs)
     # self._simple_cross_replica_ops = ReductionToOneDevice()

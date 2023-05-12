@@ -102,7 +102,7 @@ def log(s, nl=True):
     sys.stdout.flush()
 
 
-log('Model: %s' % args.model)
+log(f'Model: {args.model}')
 log('Batch size: %d' % args.batch_size)
 device = 'GPU' if args.cuda else 'CPU'
 log('Number of %ss: %d' % (device, bps.size()))

@@ -136,7 +136,7 @@ def test_compile(build_ext, name, code, libraries=None, include_dirs=None, libra
     if not os.path.exists(test_compile_dir):
         os.makedirs(test_compile_dir)
 
-    source_file = os.path.join(test_compile_dir, '%s.cc' % name)
+    source_file = os.path.join(test_compile_dir, f'{name}.cc')
     with open(source_file, 'w') as f:
         f.write(code)
 
@@ -239,8 +239,7 @@ def has_rdma_header():
     return ret_code==0
 
 def use_ucx():
-    byteps_with_ucx = int(os.environ.get('BYTEPS_WITH_UCX', 0))
-    return byteps_with_ucx
+    return int(os.environ.get('BYTEPS_WITH_UCX', 0))
 
 def with_pre_setup():
     return int(os.environ.get('BYTEPS_WITHOUT_PRESETUP', 0)) == 0
@@ -264,8 +263,7 @@ def should_build_ucx():
 ucx_default_home = '/usr/local'
 def get_ucx_prefix():
     """ specify where to install ucx """
-    ucx_prefix = os.getenv('BYTEPS_UCX_PREFIX', ucx_default_home)
-    return ucx_prefix
+    return os.getenv('BYTEPS_UCX_PREFIX', ucx_default_home)
 
 def get_ucx_home():
     """ pre-installed ucx path """
@@ -324,8 +322,7 @@ def get_common_options(build_ext):
         LIBRARIES += ['rdmacm', 'ibverbs', 'rt']
     if use_ucx():
         LIBRARIES += ['ucp', 'uct', 'ucs', 'ucm']
-        ucx_home = get_ucx_home()
-        if ucx_home:
+        if ucx_home := get_ucx_home():
             INCLUDES += [f'{ucx_home}/include']
             LIBRARY_DIRS += [f'{ucx_home}/lib']
 
@@ -364,14 +361,10 @@ def build_server(build_ext, options):
     server_lib.library_dirs = options['LIBRARY_DIRS']
 
     # auto-detect rdma
-    if has_rdma_header():
-        server_lib.libraries = ['rdmacm', 'ibverbs', 'rt']
-    else:
-        server_lib.libraries = []
+    server_lib.libraries = ['rdmacm', 'ibverbs', 'rt'] if has_rdma_header() else []
     if use_ucx():
         server_lib.libraries += ['ucp', 'uct', 'ucs', 'ucm']
-        ucx_home = get_ucx_home()
-        if ucx_home:
+        if ucx_home := get_ucx_home():
             server_lib.include_dirs += [f'{ucx_home}/include']
             server_lib.library_dirs += [f'{ucx_home}/lib']
 
@@ -397,7 +390,7 @@ def check_tf_version():
 def get_tf_include_dirs():
     import tensorflow as tf
     tf_inc = tf.sysconfig.get_include()
-    return [tf_inc, '%s/external/nsync/public' % tf_inc]
+    return [tf_inc, f'{tf_inc}/external/nsync/public']
 
 
 def get_tf_lib_dirs():
@@ -475,18 +468,12 @@ def get_tf_flags(build_ext, cpp_flags):
         tf_abi = get_tf_abi(build_ext, tf_include_dirs,
                             tf_lib_dirs, tf_libs, cpp_flags)
 
-        compile_flags = []
-        for include_dir in tf_include_dirs:
-            compile_flags.append('-I%s' % include_dir)
+        compile_flags = [f'-I{include_dir}' for include_dir in tf_include_dirs]
         if tf_abi:
             compile_flags.append('-D%s=%s' % tf_abi)
 
-        link_flags = []
-        for lib_dir in tf_lib_dirs:
-            link_flags.append('-L%s' % lib_dir)
-        for lib in tf_libs:
-            link_flags.append('-l%s' % lib)
-
+        link_flags = [f'-L{lib_dir}' for lib_dir in tf_lib_dirs]
+        link_flags.extend(f'-l{lib}' for lib in tf_libs)
         return compile_flags, link_flags
 
 
@@ -535,8 +522,7 @@ def check_mx_version():
 def get_mx_include_dirs():
     try:
         import mxnet as mx
-        path = mx.libinfo.find_include_path()
-        return path
+        return mx.libinfo.find_include_path()
     except:
         # Try to find the path automatically
         tmp_mxnet_dir = os.getenv(
@@ -548,8 +534,7 @@ def get_mx_include_dirs():
 def get_mx_lib_dirs():
     import mxnet as mx
     mx_libs = mx.libinfo.find_lib_path()
-    mx_lib_dirs = [os.path.dirname(mx_lib) for mx_lib in mx_libs]
-    return mx_lib_dirs
+    return [os.path.dirname(mx_lib) for mx_lib in mx_libs]
 
 
 def get_mx_libs(build_ext, lib_dirs, cpp_flags):
@@ -582,19 +567,15 @@ def get_mx_flags(build_ext, cpp_flags):
     compile_flags = []
     has_mkldnn = is_mx_mkldnn()
     for include_dir in mx_include_dirs:
-        compile_flags.append('-I%s' % include_dir)
+        compile_flags.append(f'-I{include_dir}')
         if has_mkldnn:
             mkldnn_include = os.path.join(include_dir, 'mkldnn')
-            compile_flags.append('-I%s' % mkldnn_include)
+            compile_flags.append(f'-I{mkldnn_include}')
 
     link_flags = []
     for lib_dir in mx_lib_dirs:
-        link_flags.append('-Wl,-rpath,%s' % lib_dir)
-        link_flags.append('-L%s' % lib_dir)
-
-    for lib in mx_libs:
-        link_flags.append('-l%s' % lib)
-
+        link_flags.extend((f'-Wl,-rpath,{lib_dir}', f'-L{lib_dir}'))
+    link_flags.extend(f'-l{lib}' for lib in mx_libs)
     return compile_flags, link_flags
 
 
@@ -633,17 +614,14 @@ def get_cuda_dirs(build_ext, cpp_flags):
     cuda_include_dirs = []
     cuda_lib_dirs = []
 
-    cuda_home = os.environ.get('BYTEPS_CUDA_HOME')
-    if cuda_home:
-        cuda_include_dirs += ['%s/include' % cuda_home]
-        cuda_lib_dirs += ['%s/lib' % cuda_home, '%s/lib64' % cuda_home]
+    if cuda_home := os.environ.get('BYTEPS_CUDA_HOME'):
+        cuda_include_dirs += [f'{cuda_home}/include']
+        cuda_lib_dirs += [f'{cuda_home}/lib', f'{cuda_home}/lib64']
 
-    cuda_include = os.environ.get('BYTEPS_CUDA_INCLUDE')
-    if cuda_include:
+    if cuda_include := os.environ.get('BYTEPS_CUDA_INCLUDE'):
         cuda_include_dirs += [cuda_include]
 
-    cuda_lib = os.environ.get('BYTEPS_CUDA_LIB')
-    if cuda_lib:
+    if cuda_lib := os.environ.get('BYTEPS_CUDA_LIB'):
         cuda_lib_dirs += [cuda_lib]
 
     if not cuda_include_dirs and not cuda_lib_dirs:
@@ -678,10 +656,9 @@ def get_nccl_vals():
     nccl_lib_dirs = []
     nccl_libs = []
 
-    nccl_home = os.environ.get('BYTEPS_NCCL_HOME', '/usr/local/nccl')
-    if nccl_home:
-        nccl_include_dirs += ['%s/include' % nccl_home]
-        nccl_lib_dirs += ['%s/lib' % nccl_home, '%s/lib64' % nccl_home]
+    if nccl_home := os.environ.get('BYTEPS_NCCL_HOME', '/usr/local/nccl'):
+        nccl_include_dirs += [f'{nccl_home}/include']
+        nccl_lib_dirs += [f'{nccl_home}/lib', f'{nccl_home}/lib64']
 
     nccl_link_mode = os.environ.get('BYTEPS_NCCL_LINK', 'SHARED')
     if nccl_link_mode.upper() == 'SHARED':
@@ -788,13 +765,13 @@ def parse_version(version_str):
         return None
 
     # turn version string to long integer
-    version = int(m.group(1)) * 10 ** 9
-    if m.group(2) is not None:
-        version += int(m.group(2)) * 10 ** 6
-    if m.group(3) is not None:
-        version += int(m.group(3)) * 10 ** 3
-    if m.group(4) is not None:
-        version += int(m.group(4))
+    version = int(m[1]) * 10 ** 9
+    if m[2] is not None:
+        version += int(m[2]) * 10 ** 6
+    if m[3] is not None:
+        version += int(m[3]) * 10 ** 3
+    if m[4] is not None:
+        version += int(m[4])
     return version
 
 
@@ -891,23 +868,23 @@ def build_ucx():
        and hasattr(pre_setup, 'ucx_tarball_path'):
         ucx_tarball_path = pre_setup.ucx_tarball_path.strip()
 
-    if not ucx_tarball_path:
-        if os.path.exists("./ucx.tar.gz"):
-            ucx_tarball_path = os.path.join(here, './ucx.tar.gz')
+    if not ucx_tarball_path and os.path.exists("./ucx.tar.gz"):
+        ucx_tarball_path = os.path.join(here, './ucx.tar.gz')
 
     if not ucx_tarball_path:
-        cmd = "curl -kL {} -o ucx.tar.gz".format("https://github.com/openucx/ucx/archive/refs/tags/v1.11.0.tar.gz")
+        cmd = 'curl -kL https://github.com/openucx/ucx/archive/refs/tags/v1.11.0.tar.gz -o ucx.tar.gz'
         subprocess.run(cmd, shell=True)
         ucx_tarball_path = os.path.join(here, './ucx.tar.gz')
 
     print("ucx_tarball_path is", ucx_tarball_path)
     ucx_prefix = get_ucx_prefix()
     sudo_str = "" if os.access(ucx_prefix, os.W_OK) else "sudo"
-    cmd = "mkdir -p tmp; tar xzf {} -C tmp; ".format(ucx_tarball_path) + \
-          "rm -rf ucx-build; mkdir -p ucx-build; mv tmp/ucx-*/* ucx-build/; " + \
-          "cd ucx-build; pwd; which libtoolize; " + \
-          "./autogen.sh; ./autogen.sh && " + \
-          "./contrib/configure-release --enable-mt --prefix={0} && make -j && {1} make install -j".format(ucx_prefix, sudo_str)
+    cmd = (
+        f"mkdir -p tmp; tar xzf {ucx_tarball_path} -C tmp; rm -rf ucx-build; mkdir -p ucx-build; mv tmp/ucx-*/* ucx-build/; cd ucx-build; pwd; which libtoolize; ./autogen.sh; ./autogen.sh && "
+        + "./contrib/configure-release --enable-mt --prefix={0} && make -j && {1} make install -j".format(
+            ucx_prefix, sudo_str
+        )
+    )
     make_process = subprocess.Popen(cmd,
                                     cwd='3rdparty',
                                     stdout=sys.stdout,
@@ -927,10 +904,10 @@ class custom_build_ext(build_ext):
 
         ucx_home = get_ucx_home()
         ucx_prefix = get_ucx_prefix()
-        make_option = ""
         # To resolve tf-gcc incompatibility
         has_cxx_flag = False
         glibcxx_flag = False
+        make_option = ""
         if not without_tensorflow():
             try:
                 import tensorflow as tf
@@ -938,8 +915,8 @@ class custom_build_ext(build_ext):
                 for flag in tf.sysconfig.get_compile_flags():
                     if 'D_GLIBCXX_USE_CXX11_ABI' in flag:
                         has_cxx_flag = True
-                        glibcxx_flag = False if (flag[-1]=='0') else True
-                        make_option += flag + ' '
+                        glibcxx_flag = flag[-1] != '0'
+                        make_option += f'{flag} '
                         break
                 make_option += '" '
             except:
@@ -955,18 +932,15 @@ class custom_build_ext(build_ext):
                         raise DistutilsError(
                             '-D_GLIBCXX_USE_CXX11_ABI is not consistent between TensorFlow and PyTorch, '
                             'consider install them separately.')
-                    else:
-                        pass
                 else:
-                    make_option += 'ADD_CFLAGS=-D_GLIBCXX_USE_CXX11_ABI=' + \
-                                    str(int(torch_flag)) + ' '
+                    make_option += f'ADD_CFLAGS=-D_GLIBCXX_USE_CXX11_ABI={int(torch_flag)} '
                     has_cxx_flag = True
                     glibcxx_flag = torch_flag
             except:
                 pass
 
         if not os.path.exists("3rdparty/ps-lite/build/libps.a") or \
-           not os.path.exists("3rdparty/ps-lite/deps/lib"):
+               not os.path.exists("3rdparty/ps-lite/deps/lib"):
             print("should_build_ucx is", should_build_ucx())
             if should_build_ucx():
                 build_ucx()
@@ -985,13 +959,15 @@ class custom_build_ext(build_ext):
 
             if os.path.exists("./zeromq-4.1.4.tar.gz"):
                 zmq_tarball_path = os.path.join(here, './zeromq-4.1.4.tar.gz')
-                make_option += " WGET='curl -O '  ZMQ_URL=file://" + zmq_tarball_path + " "
+                make_option += f" WGET='curl -O '  ZMQ_URL=file://{zmq_tarball_path} "
 
-            make_process = subprocess.Popen('make ' + make_option,
-                                            cwd='3rdparty/ps-lite',
-                                            stdout=sys.stdout,
-                                            stderr=sys.stderr,
-                                            shell=True)
+            make_process = subprocess.Popen(
+                f'make {make_option}',
+                cwd='3rdparty/ps-lite',
+                stdout=sys.stdout,
+                stderr=sys.stderr,
+                shell=True,
+            )
             make_process.communicate()
             if make_process.returncode:
                 raise DistutilsSetupError('An ERROR occured while running the '
@@ -1000,7 +976,7 @@ class custom_build_ext(build_ext):
 
         options = get_common_options(self)
         if has_cxx_flag:
-            options['COMPILE_FLAGS'] += ['-D_GLIBCXX_USE_CXX11_ABI=' + str(int(glibcxx_flag))]
+            options['COMPILE_FLAGS'] += [f'-D_GLIBCXX_USE_CXX11_ABI={int(glibcxx_flag)}']
 
         built_plugins = []
         try:
@@ -1020,12 +996,11 @@ class custom_build_ext(build_ext):
                 built_plugins.append(True)
                 print('INFO: Tensorflow extension is built successfully.')
             except:
-                if not with_tensorflow():
-                    print('INFO: Unable to build TensorFlow plugin, will skip it.\n\n'
-                          '%s' % traceback.format_exc())
-                    built_plugins.append(False)
-                else:
+                if with_tensorflow():
                     raise
+                print('INFO: Unable to build TensorFlow plugin, will skip it.\n\n'
+                      '%s' % traceback.format_exc())
+                built_plugins.append(False)
         if not without_pytorch():
             try:
                 torch_version = check_torch_version()
@@ -1033,31 +1008,29 @@ class custom_build_ext(build_ext):
                 built_plugins.append(True)
                 print('INFO: PyTorch extension is built successfully.')
             except:
-                if not with_pytorch():
-                    print('INFO: Unable to build PyTorch plugin, will skip it.\n\n'
-                          '%s' % traceback.format_exc())
-                    built_plugins.append(False)
-                else:
+                if with_pytorch():
                     raise
+                print('INFO: Unable to build PyTorch plugin, will skip it.\n\n'
+                      '%s' % traceback.format_exc())
+                built_plugins.append(False)
         if not int(os.environ.get('BYTEPS_WITHOUT_MXNET', 0)):
             # fix "libcuda.so.1 not found" issue
             cuda_home = os.environ.get('BYTEPS_CUDA_HOME', '/usr/local/cuda')
-            cuda_stub_path = cuda_home + '/lib64/stubs'
-            ln_command = "cd " + cuda_stub_path + "; ln -sf libcuda.so libcuda.so.1"
+            cuda_stub_path = f'{cuda_home}/lib64/stubs'
+            ln_command = f"cd {cuda_stub_path}; ln -sf libcuda.so libcuda.so.1"
             os.system(ln_command)
             try:
                 build_mx_extension(self, options)
                 built_plugins.append(True)
                 print('INFO: MXNet extension is built successfully.')
             except:
-                if not int(os.environ.get('BYTEPS_WITH_MXNET', 0)):
-                    print('INFO: Unable to build MXNet plugin, will skip it.\n\n'
-                          '%s' % traceback.format_exc())
-                    built_plugins.append(False)
-                else:
+                if int(os.environ.get('BYTEPS_WITH_MXNET', 0)):
                     raise
+                print('INFO: Unable to build MXNet plugin, will skip it.\n\n'
+                      '%s' % traceback.format_exc())
+                built_plugins.append(False)
             finally:
-                os.system("rm -rf " + cuda_stub_path + "/libcuda.so.1")
+                os.system(f"rm -rf {cuda_stub_path}/libcuda.so.1")
 
         if not built_plugins:
             print('INFO: Only server module is built.')

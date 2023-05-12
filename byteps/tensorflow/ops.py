@@ -46,11 +46,10 @@ def _load_library(name):
       NotFoundError if were not able to load .so file.
     """
     filename = resource_loader.get_path_to_datafile(name)
-    library = load_library.load_op_library(filename)
-    return library
+    return load_library.load_op_library(filename)
 
 
-C_LIB = _load_library('c_lib' + get_ext_suffix())
+C_LIB = _load_library(f'c_lib{get_ext_suffix()}')
 
 _basics = _BytePSBasics(__file__, 'c_lib')
 
@@ -65,8 +64,7 @@ rank = _basics.rank
 local_rank = _basics.local_rank
 get_pushpull_speed = _basics.get_pushpull_speed
 
-dll_path = os.path.join(os.path.dirname(__file__),
-                        'c_lib' + get_ext_suffix())
+dll_path = os.path.join(os.path.dirname(__file__), f'c_lib{get_ext_suffix()}')
 TF_LIB_CTYPES = ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL)
 
 def get_average_backwards_compatibility_fun(reduce_ops):
@@ -105,7 +103,7 @@ def _normalize_name(name):
 
 def randomString(stringLength=16):
     letters = string.ascii_lowercase
-    return ''.join(random.choice(letters) for i in range(stringLength))
+    return ''.join(random.choice(letters) for _ in range(stringLength))
 
 def _push_pull(tensor, scope='', name=None):
     """An op which sums an input tensor over all the BytePS processes.
@@ -117,7 +115,7 @@ def _push_pull(tensor, scope='', name=None):
       processes.
     """
     if name is None and not _executing_eagerly():
-        name = 'BytePSPushPull_%s' % _normalize_name(tensor.name)
+        name = f'BytePSPushPull_{_normalize_name(tensor.name)}'
     if scope == '' and not _executing_eagerly():
         if 'v1' in dir(tf.compat):
             scope = tf.compat.v1.get_default_graph().get_name_scope()
@@ -129,7 +127,7 @@ def _push_pull(tensor, scope='', name=None):
         name = ''
     full_name = scope + name
     if not full_name:
-        full_name = "empty_name_" + randomString()
+        full_name = f"empty_name_{randomString()}"
     full_name_ascii = full_name.encode("ascii")
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
     return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
@@ -159,7 +157,7 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
     """
     # Broadcast is implemented as push + pull after zero-ing non-root tensors
     if name is None and not _executing_eagerly():
-        name = 'BytePSBroadcast_%s' % _normalize_name(tensor.name)
+        name = f'BytePSBroadcast_{_normalize_name(tensor.name)}'
     if scope == '' and not _executing_eagerly():
         if 'v1' in dir(tf.compat):
             scope = tf.compat.v1.get_default_graph().get_name_scope()
@@ -171,24 +169,23 @@ def broadcast(tensor, root_rank, scope='', name=None, is_variable=True):
         name = ''
     full_name = scope + name
     if not full_name:
-        full_name = "empty_name_" + randomString()
+        full_name = f"empty_name_{randomString()}"
     full_name_ascii = full_name.encode("ascii")
 
     TF_LIB_CTYPES.byteps_tensorflow_declare_tensor(ctypes.c_char_p(full_name_ascii))
-    if root_rank != rank():
-        if is_variable:
-            if hasattr(tf, 'assign_sub'):
-                with tf.control_dependencies([tf.assign_sub(tensor, tensor)]):
-                    return C_LIB.byteps_push_pull(tensor, name=name)
-            else:
-                with tf.control_dependencies([tf.compat.v1.assign_sub(tensor, tensor)]):
-                    return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
-        else:
-            with tf.device(tensor.device):
-                input_tensor = tf.zeros_like(tensor)
-            return C_LIB.byteps_push_pull(input_tensor, name=name, input_name = full_name)
-    else:
+    if root_rank == rank():
         return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
+    if is_variable:
+        if hasattr(tf, 'assign_sub'):
+            with tf.control_dependencies([tf.assign_sub(tensor, tensor)]):
+                return C_LIB.byteps_push_pull(tensor, name=name)
+        else:
+            with tf.control_dependencies([tf.compat.v1.assign_sub(tensor, tensor)]):
+                return C_LIB.byteps_push_pull(tensor, name=name, input_name = full_name)
+    else:
+        with tf.device(tensor.device):
+            input_tensor = tf.zeros_like(tensor)
+        return C_LIB.byteps_push_pull(input_tensor, name=name, input_name = full_name)
 
 
 @ops.RegisterGradient('BytepsBroadcast')
@@ -202,6 +199,4 @@ def _broadcast_grad(op, grad):
     """
     root_rank = op.get_attr('root_rank')
     grad_reduced = _push_pull(grad)
-    if rank() != root_rank:
-        return grad_reduced * 0
-    return grad_reduced
+    return grad_reduced * 0 if rank() != root_rank else grad_reduced

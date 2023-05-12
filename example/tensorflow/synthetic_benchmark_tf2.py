@@ -86,7 +86,7 @@ def log(s, nl=True):
     print(s, end='\n' if nl else '')
 
 
-log('Model: %s' % args.model)
+log(f'Model: {args.model}')
 log('Batch size: %d' % args.batch_size)
 device = 'GPU' if args.cuda else 'CPU'
 log('Number of %ss: %d' % (device, bps.size()))

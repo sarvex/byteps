@@ -27,11 +27,29 @@ import numpy as np
 def get_feature(internel_layer, layers, filters, batch_norm = False, **kwargs):
     for i, num in enumerate(layers):
         for j in range(num):
-            internel_layer = mx.sym.Convolution(data = internel_layer, kernel=(3, 3), pad=(1, 1), num_filter=filters[i], name="conv%s_%s" %(i + 1, j + 1))
+            internel_layer = mx.sym.Convolution(
+                data=internel_layer,
+                kernel=(3, 3),
+                pad=(1, 1),
+                num_filter=filters[i],
+                name=f"conv{i + 1}_{j + 1}",
+            )
             if batch_norm:
-                internel_layer = mx.symbol.BatchNorm(data=internel_layer, name="bn%s_%s" %(i + 1, j + 1))
-            internel_layer = mx.sym.Activation(data=internel_layer, act_type="relu", name="relu%s_%s" %(i + 1, j + 1))
-        internel_layer = mx.sym.Pooling(data=internel_layer, pool_type="max", kernel=(2, 2), stride=(2,2), name="pool%s" %(i + 1))
+                internel_layer = mx.symbol.BatchNorm(
+                    data=internel_layer, name=f"bn{i + 1}_{j + 1}"
+                )
+            internel_layer = mx.sym.Activation(
+                data=internel_layer,
+                act_type="relu",
+                name=f"relu{i + 1}_{j + 1}",
+            )
+        internel_layer = mx.sym.Pooling(
+            data=internel_layer,
+            pool_type="max",
+            kernel=(2, 2),
+            stride=(2, 2),
+            name=f"pool{i + 1}",
+        )
     return internel_layer
 
 def get_classifier(input_data, num_classes, **kwargs):
@@ -42,8 +60,7 @@ def get_classifier(input_data, num_classes, **kwargs):
     fc7 = mx.sym.FullyConnected(data=drop6, num_hidden=4096, name="fc7")
     relu7 = mx.sym.Activation(data=fc7, act_type="relu", name="relu7")
     drop7 = mx.sym.Dropout(data=relu7, p=0.5, name="drop7")
-    fc8 = mx.sym.FullyConnected(data=drop7, num_hidden=num_classes, name="fc8")
-    return fc8
+    return mx.sym.FullyConnected(data=drop7, num_hidden=num_classes, name="fc8")
 
 def get_symbol(num_classes, num_layers=11, batch_norm=False, dtype='float32', **kwargs):
     """
@@ -63,7 +80,9 @@ def get_symbol(num_classes, num_layers=11, batch_norm=False, dtype='float32', **
                 16: ([2, 2, 3, 3, 3], [64, 128, 256, 512, 512]),
                 19: ([2, 2, 4, 4, 4], [64, 128, 256, 512, 512])}
     if num_layers not in vgg_spec:
-        raise ValueError("Invalide num_layers {}. Possible choices are 11,13,16,19.".format(num_layers))
+        raise ValueError(
+            f"Invalide num_layers {num_layers}. Possible choices are 11,13,16,19."
+        )
     layers, filters = vgg_spec[num_layers]
     data = mx.sym.Variable(name="data")
     if dtype == 'float16':
@@ -72,5 +91,4 @@ def get_symbol(num_classes, num_layers=11, batch_norm=False, dtype='float32', **
     classifier = get_classifier(feature, num_classes)
     if dtype == 'float16':
         classifier = mx.sym.Cast(data=classifier, dtype=np.float32)
-    symbol = mx.sym.SoftmaxOutput(data=classifier, name='softmax')
-    return symbol
+    return mx.sym.SoftmaxOutput(data=classifier, name='softmax')

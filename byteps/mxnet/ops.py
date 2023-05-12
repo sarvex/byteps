@@ -40,8 +40,7 @@ local_size = _basics.local_size
 rank = _basics.rank
 local_rank = _basics.local_rank
 
-dll_path = os.path.join(os.path.dirname(__file__),
-                        'c_lib' + get_ext_suffix())
+dll_path = os.path.join(os.path.dirname(__file__), f'c_lib{get_ext_suffix()}')
 MXNET_LIB_CTYPES = ctypes.CDLL(dll_path, ctypes.RTLD_GLOBAL)
 
 
@@ -101,9 +100,9 @@ def byteps_declare_tensor(name, **kwargs):
     for k, v in kwargs.items():
         splits = k.split('_')
         if len(splits) < 2 and not all(splits):
-            warnings.warn("Ignore invalid params %s of %s" % (k, name))
+            warnings.warn(f"Ignore invalid params {k} of {name}")
             continue
-        
+
         # remove first prefix "byteps"
         k = '_'.join(splits[1:])
         if isinstance(v, str):
@@ -113,8 +112,7 @@ def byteps_declare_tensor(name, **kwargs):
         elif isinstance(v, bool):
             args[k] = str(int(v)).lower()
         else:
-            raise ValueError("Invalid %s of type %s of %s" %
-                             (v, type(v), name))
+            raise ValueError(f"Invalid {v} of type {type(v)} of {name}")
 
     check_call(MXNET_LIB_CTYPES.byteps_mxnet_declare_tensor(
         c_str(name),

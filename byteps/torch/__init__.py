@@ -40,31 +40,32 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         super(self.__class__, self).__init__(params)
         self._compression = compression
 
-        if named_parameters is not None:
-            named_parameters = list(named_parameters)
-        else:
-            named_parameters = []
-
         self._enable_async = (int(os.getenv('BYTEPS_ENABLE_ASYNC', 0)) != 0)
         if self._enable_async:
             assert int(os.getenv('DMLC_NUM_WORKER')) > 1, \
-                "Async is only valid for distributed training"
+                    "Async is only valid for distributed training"
             print('BytePS: enable asynchronous training')
 
+        named_parameters = (
+            list(named_parameters) if named_parameters is not None else []
+        )
         # make sure that named_parameters are tuples
-        if any([not isinstance(p, tuple) for p in named_parameters]):
+        if any(not isinstance(p, tuple) for p in named_parameters):
             raise ValueError('named_parameters should be a sequence of '
                              'tuples (name, parameter), usually produced by '
                              'model.named_parameters().')
 
         dups = _DistributedOptimizer.find_duplicates([k for k, _ in named_parameters])
         if len(dups) > 0:
-            raise ValueError('Parameter names in named_parameters must be unique. '
-                             'Found duplicates: %s' % ', '.join(dups))
+            raise ValueError(
+                f"Parameter names in named_parameters must be unique. Found duplicates: {', '.join(dups)}"
+            )
 
-        if len(named_parameters) > 0:
+        if named_parameters:
             if isinstance(named_parameters[0][1], torch.Tensor):
-                if any([not isinstance(p, torch.Tensor) for name, p in named_parameters]):
+                if any(
+                    not isinstance(p, torch.Tensor) for name, p in named_parameters
+                ):
                     raise ValueError('named_parameters should consistently be a sequence of '
                                      'tuples (name, torch.Tensor)')
                 self._is_tensor_instance = True
@@ -79,9 +80,11 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                                          in sorted(named_parameters)}
         else:
             self._is_tensor_instance = False
-            self._parameter_names = {v: 'push_pull.noname.%s' % i
-                                     for param_group in self.param_groups
-                                     for i, v in enumerate(param_group['params'])}
+            self._parameter_names = {
+                v: f'push_pull.noname.{i}'
+                for param_group in self.param_groups
+                for i, v in enumerate(param_group['params'])
+            }
         self.backward_passes_per_step = backward_passes_per_step
         self._push_pull_delay = {v: self.backward_passes_per_step
                                  for _, v in sorted(named_parameters)}
@@ -94,10 +97,10 @@ class _DistributedOptimizer(torch.optim.Optimizer):
 
         # declare tensors
         for name in sorted(self._parameter_names.values()):
-            declare("Gradient."+name)
+            declare(f"Gradient.{name}")
         # We use two loops for load-balancing
         for name in sorted(self._parameter_names.values()):
-            declare("Parameter."+name)
+            declare(f"Parameter.{name}")
 
     @staticmethod
     def find_duplicates(lst):
@@ -136,18 +139,23 @@ class _DistributedOptimizer(torch.optim.Optimizer):
         else:
             tensor = p.grad
             tensor_compressed, ctx = self._compression.compress(tensor)
-            handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
+            handle = byteps_push_pull(
+                tensor_compressed, average=True, name=f"Gradient.{name}"
+            )
         return handle, ctx
 
     def _make_hook(self, p):
         def hook(*ignore):
-            if p in self._handles and self._handles[p][0] is not None:
-                if self._push_pull_delay[p] <= 0:
-                    raise AssertionError(
-                        "Gradients were computed more than "
-                        "backward_passes_per_step times before call "
-                        "to step(). Increase backward_passes_per_step to "
-                        "accumulate gradients locally.")
+            if (
+                p in self._handles
+                and self._handles[p][0] is not None
+                and self._push_pull_delay[p] <= 0
+            ):
+                raise AssertionError(
+                    "Gradients were computed more than "
+                    "backward_passes_per_step times before call "
+                    "to step(). Increase backward_passes_per_step to "
+                    "accumulate gradients locally.")
             assert not p.grad.requires_grad
             assert self._push_pull_delay[p] > 0
             handle, ctx = None, None
@@ -155,6 +163,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
             if self._push_pull_delay[p] == 0:
                 handle, ctx = self._push_pull_grad_async(p)
             self._handles[p] = (handle, ctx)
+
         return hook
 
     def synchronize(self):
@@ -194,10 +203,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
 
     def step(self, closure=None):
         if self._enable_async:
-            old_weight_map = {}
-            # store the weights before update
-            for p, _ in self._handles.items():
-                old_weight_map[p] = p.data.clone().detach()
+            old_weight_map = {p: p.data.clone().detach() for p, _ in self._handles.items()}
             # update
             loss = super(self.__class__, self).step(closure)
 
@@ -210,7 +216,7 @@ class _DistributedOptimizer(torch.optim.Optimizer):
                         name = self._parameter_names.get(p.__hash__())
                     else:
                         name = self._parameter_names.get(p)
-                    handle = byteps_push_pull(p, average=False, name="AsyncParam."+name)
+                    handle = byteps_push_pull(p, average=False, name=f"AsyncParam.{name}")
                     _, ctx = self._compression.compress(p)
                     self._handles[p] = (handle, ctx)
 
@@ -283,7 +289,7 @@ def broadcast_parameters(params, root_rank, prefix="Parameter."):
         # support both named_parameters() and regular parameters()
         params = [p if isinstance(p, tuple) else (None, p) for p in params]
     else:
-        raise ValueError('invalid params of type: %s' % type(params))
+        raise ValueError(f'invalid params of type: {type(params)}')
 
     # Run synchronous broadcasts.
     for name, p in params:
@@ -451,13 +457,13 @@ def broadcast_object(obj, root_rank=0, name=None):
         cloudpickle.dump(obj, b)
         t = torch.ByteTensor(bytearray(b.getvalue()))
         sz = torch.IntTensor([t.shape[0]])
-        broadcast_parameters([(name + '.sz', sz)], root_rank, prefix="Size.")
+        broadcast_parameters([(f'{name}.sz', sz)], root_rank, prefix="Size.")
     else:
         sz = torch.IntTensor([0])
-        broadcast_parameters([(name + '.sz', sz)], root_rank, prefix="Size.")
+        broadcast_parameters([(f'{name}.sz', sz)], root_rank, prefix="Size.")
         t = torch.ByteTensor(sz.tolist()[0])
 
-    broadcast_parameters([(name + '.t', t)], root_rank, prefix="Parameter.")
+    broadcast_parameters([(f'{name}.t', t)], root_rank, prefix="Parameter.")
 
     if rank() != root_rank:
         buf = io.BytesIO(t.numpy().tobytes())

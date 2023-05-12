@@ -19,10 +19,13 @@ import tensorflow as tf
 
 def create_distributed_optimizer(keras, optimizer, name, device_dense, device_sparse,
                                  compression, sparse_as_dense):
+
+
+
     class _DistributedOptimizer(keras.optimizers.Optimizer):
         _HAS_AGGREGATE_GRAD = True
         def __init__(self, **kwargs):
-            self._name = name or "Distributed%s" % self.__class__.__base__.__name__
+            self._name = name or f"Distributed{self.__class__.__base__.__name__}"
             self._device_dense = device_dense
             self._device_sparse = device_sparse
             self._compression = compression
@@ -46,24 +49,24 @@ def create_distributed_optimizer(keras, optimizer, name, device_dense, device_sp
 
         def _push_pull(self, gradients):
             self._aggregated_gradients = True
-            if bps.size() > 1:
-                averaged_gradients = []
-                with tf.name_scope(self._name + "_Push_Pull") as scope:
-                    for grad in gradients:
-                        if grad is not None:
-                            if self._sparse_as_dense and \
-                                    isinstance(grad, tf.IndexedSlices):
-                                grad = tf.convert_to_tensor(grad)
-                            avg_grad = bps.push_pull(grad, scope,
-                                                     device_dense=self._device_dense,
-                                                     device_sparse=self._device_sparse,
-                                                     compression=self._compression)
-                            averaged_gradients.append(avg_grad)
-                        else:
-                            averaged_gradients.append(None)
-                    return averaged_gradients
-            else:
+            if bps.size() <= 1:
                 return gradients
+
+            averaged_gradients = []
+            with tf.name_scope(f"{self._name}_Push_Pull") as scope:
+                for grad in gradients:
+                    if grad is not None:
+                        if self._sparse_as_dense and \
+                                isinstance(grad, tf.IndexedSlices):
+                            grad = tf.convert_to_tensor(grad)
+                        avg_grad = bps.push_pull(grad, scope,
+                                                 device_dense=self._device_dense,
+                                                 device_sparse=self._device_sparse,
+                                                 compression=self._compression)
+                        averaged_gradients.append(avg_grad)
+                    else:
+                        averaged_gradients.append(None)
+                return averaged_gradients
 
         def apply_gradients(self, *args, **kwargs):
             if not self._aggregated_gradients:
@@ -72,6 +75,7 @@ def create_distributed_optimizer(keras, optimizer, name, device_dense, device_sp
                                 'using TensorFlow 2.0, please specify '
                                 '`experimental_run_tf_function=False` in `compile()`.')
             return super(self.__class__, self).apply_gradients(*args, **kwargs)
+
 
     # We dynamically create a new class that inherits from the optimizer that was passed in.
     # The goal is to override get_gradients() method with an push_pull implementation.
@@ -110,12 +114,11 @@ def load_model(keras, wrap_optimizer, optimizer_modules, filepath, custom_optimi
     }
 
     if custom_optimizers is not None:
-        byteps_objects.update({
-            cls.__name__: wrap_optimizer(cls)
-            for cls in custom_optimizers
-        })
+        byteps_objects |= {
+            cls.__name__: wrap_optimizer(cls) for cls in custom_optimizers
+        }
 
     if custom_objects is not None:
-        byteps_objects.update(custom_objects)
+        byteps_objects |= custom_objects
 
     return keras.models.load_model(filepath, custom_objects=byteps_objects)

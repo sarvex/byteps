@@ -52,24 +52,44 @@ class DistributedOptimizer(mx.optimizer.Optimizer):
     def _do_push_pull(self, index, grad):
         if isinstance(index, (tuple, list)):
             for i in range(len(index)):
-                byteps_declare_tensor("gradient_" + str(index[i]))
-                byteps_push_pull(grad[i], version=0, priority=-index[i],
-                                 name="gradient_" + str(index[i]), is_average=True)
+                byteps_declare_tensor(f"gradient_{str(index[i])}")
+                byteps_push_pull(
+                    grad[i],
+                    version=0,
+                    priority=-index[i],
+                    name=f"gradient_{str(index[i])}",
+                    is_average=True,
+                )
         else:
-            byteps_declare_tensor("gradient_" + str(index))
-            byteps_push_pull(grad, version=0, priority=-index,
-                             name="gradient_" + str(index), is_average=True)
+            byteps_declare_tensor(f"gradient_{str(index)}")
+            byteps_push_pull(
+                grad,
+                version=0,
+                priority=-index,
+                name=f"gradient_{str(index)}",
+                is_average=True,
+            )
 
     def _do_push_pull_param(self, index, delta_weight):
         if isinstance(index, (tuple, list)):
             for i in range(len(index)):
-                byteps_declare_tensor("weight_" + str(index[i]))
-                byteps_push_pull(delta_weight[i], version=0, priority=-index[i],
-                                 name="weight_" + str(index[i]), is_average=False)
+                byteps_declare_tensor(f"weight_{str(index[i])}")
+                byteps_push_pull(
+                    delta_weight[i],
+                    version=0,
+                    priority=-index[i],
+                    name=f"weight_{str(index[i])}",
+                    is_average=False,
+                )
         else:
-            byteps_declare_tensor("weight_" + str(index))
-            byteps_push_pull(delta_weight, version=0, priority=-index,
-                             name="weight_" + str(index), is_average=False)
+            byteps_declare_tensor(f"weight_{str(index)}")
+            byteps_push_pull(
+                delta_weight,
+                version=0,
+                priority=-index,
+                name=f"weight_{str(index)}",
+                is_average=False,
+            )
 
     def update(self, index, weight, grad, state):
         if self._enable_async:
@@ -137,14 +157,19 @@ def broadcast_parameters(params, root_rank=0):
         tensors = [p for _, p in sorted(params.items())]
 
         # Run tensor initilization
-        for i in range(len(tensors)):
-            byteps_declare_tensor("parameter_" + str(parameter_index))
+        for tensor_ in tensors:
+            byteps_declare_tensor(f"parameter_{str(parameter_index)}")
             # Broadcast is implemented as push + pull in BytePS
             # To broadcast: we should zero-out all non-root tensors, and disable push_pull average
             if rank() != root_rank:
-                tensors[i].__imul__(0)
-            byteps_push_pull(tensors[i], version=0, priority=0,
-                             name="parameter_" + str(parameter_index), is_average=False)
+                tensor_.__imul__(0)
+            byteps_push_pull(
+                tensor_,
+                version=0,
+                priority=0,
+                name=f"parameter_{str(parameter_index)}",
+                is_average=False,
+            )
             parameter_index += 1
 
         # Make sure tensors pushed to MXNet engine get processed such that all
@@ -158,7 +183,7 @@ def broadcast_parameters(params, root_rank=0):
                         "the first training step.")
 
     else:
-        raise ValueError('Invalid params of type: %s' % type(params))
+        raise ValueError(f'Invalid params of type: {type(params)}')
 
 
 class DistributedTrainer(mx.gluon.Trainer):
@@ -200,9 +225,7 @@ class DistributedTrainer(mx.gluon.Trainer):
 
         param_list = []
         if isinstance(params, mx.gluon.ParameterDict):
-            for key in sorted(list(params.keys())):
-                param_list.append(params[key])
-
+            param_list.extend(params[key] for key in sorted(list(params.keys())))
         self._intra_compressor = self._register_compressor(
             params, optimizer_params, compression_params)
 
@@ -217,7 +240,7 @@ class DistributedTrainer(mx.gluon.Trainer):
         self.root_rank = root_rank
         self._intra_compressors = {}
         for i, param in enumerate(self._params):
-            byteps_declare_tensor("parameter_" + str(i))
+            byteps_declare_tensor(f"parameter_{str(i)}")
             self._intra_compressors[param.name] = copy.deepcopy(
                 self._intra_compressor)
             if param.grad_req != 'null':
@@ -225,7 +248,7 @@ class DistributedTrainer(mx.gluon.Trainer):
                     filter(lambda attr: attr[0].startswith(
                         "byteps_",), param.__dict__.items())
                 )
-                byteps_declare_tensor("gradient_" + str(i), **byteps_params)
+                byteps_declare_tensor(f"gradient_{str(i)}", **byteps_params)
 
     def __del__(self):
         if local_rank() == 0:
@@ -258,17 +281,16 @@ class DistributedTrainer(mx.gluon.Trainer):
             for item in check_list:
                 if compression_params.get(item):
                     if isinstance(compression_params[item], str):
-                        setattr(param, "byteps_%s_type" %
-                                item, compression_params[item])
+                        setattr(param, f"byteps_{item}_type", compression_params[item])
                     else:
-                        raise TypeError("%s should be str" % item)
+                        raise TypeError(f"{item} should be str")
 
             # need parameter
             compressor = compression_params["compressor"]
             if compressor == "onebit":
                 setattr(param, "byteps_compressor_onebit_scaling", str(
                     compression_params.get("scaling", False)))
-            elif compressor == "topk" or compressor == "randomk" or compressor == "dithering":
+            elif compressor in ["topk", "randomk", "dithering"]:
                 # raise KeyError if 'k' is not found
                 setattr(param, "byteps_compressor_k",
                         compression_params["k"])
@@ -337,8 +359,12 @@ class DistributedTrainer(mx.gluon.Trainer):
                     param._grad[0], 1.0 / self._scale / self._bps_size, out=param._grad[0])
                 compressed, ctx = self._intra_compressors[param.name].compress(
                     param._grad[0])
-                byteps_push_pull(compressed, is_average=False,
-                                 name="gradient_" + str(i), priority=-i)
+                byteps_push_pull(
+                    compressed,
+                    is_average=False,
+                    name=f"gradient_{str(i)}",
+                    priority=-i,
+                )
                 param._grad[0][:] = self._intra_compressors[param.name].decompress(
                     compressed, ctx, x=param._data[0])
 
@@ -354,7 +380,12 @@ class DistributedTrainer(mx.gluon.Trainer):
                 if rank() != self.root_rank:
                     param_arrays[0].__imul__(0)
 
-                byteps_push_pull(param_arrays[0], version=0, priority=0,
-                                 name="parameter_" + str(idx), is_average=False)
+                byteps_push_pull(
+                    param_arrays[0],
+                    version=0,
+                    priority=0,
+                    name=f"parameter_{str(idx)}",
+                    is_average=False,
+                )
 
         self._params_to_init = tensors

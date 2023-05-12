@@ -23,22 +23,16 @@ import atexit
 
 def get_ext_suffix():
     """Determine library extension for various versions of Python."""
-    ext_suffix = sysconfig.get_config_var('EXT_SUFFIX')
-    if ext_suffix:
+    if ext_suffix := sysconfig.get_config_var('EXT_SUFFIX'):
         return ext_suffix
 
-    ext_suffix = sysconfig.get_config_var('SO')
-    if ext_suffix:
-        return ext_suffix
-
-    return '.so'
+    return ext_suffix if (ext_suffix := sysconfig.get_config_var('SO')) else '.so'
 
 
 def get_extension_full_path(pkg_path, *args):
-    assert len(args) >= 1
+    assert args
     dir_path = os.path.join(os.path.dirname(pkg_path), *args[:-1])
-    full_path = os.path.join(dir_path, args[-1] + get_ext_suffix())
-    return full_path
+    return os.path.join(dir_path, args[-1] + get_ext_suffix())
 
 
 def check_extension(ext_name, ext_env_var, pkg_path, *args):
@@ -135,5 +129,4 @@ class BytePSBasics(object):
         """
         pushpull_speed = self.C_LIB_CTYPES.byteps_get_pushpull_speed
         pushpull_speed.restype = ctypes.py_object
-        entry = pushpull_speed()
-        return entry
+        return pushpull_speed()

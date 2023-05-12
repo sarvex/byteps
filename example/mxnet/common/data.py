@@ -130,16 +130,13 @@ class SyntheticDataIter(DataIter):
         self.cur_iter = 0
 
 def get_rec_iter(args, kv=None):
-    image_shape = tuple([int(l) for l in args.image_shape.split(',')])
+    image_shape = tuple(int(l) for l in args.image_shape.split(','))
     if 'benchmark' in args and args.benchmark:
         data_shape = (args.batch_size,) + image_shape
         train = SyntheticDataIter(args.num_classes, data_shape,
                 args.num_examples / args.batch_size, np.float32)
         return (train, None)
-    if kv:
-        (rank, nworker) = (kv.rank, kv.num_workers)
-    else:
-        (rank, nworker) = (0, 1)
+    (rank, nworker) = (kv.rank, kv.num_workers) if kv else (0, 1)
     rgb_mean = [float(i) for i in args.rgb_mean.split(',')]
     rgb_std = [float(i) for i in args.rgb_std.split(',')]
     train = mx.io.ImageRecordIter(

@@ -125,9 +125,9 @@ class DistributedDataParallel(Module):
             ):
         super(DistributedDataParallel, self).__init__()
 
-        assert device_ids and len(device_ids) == 1, (
-                "DistributedDataParallel device_ids contain exactlyone entry,"
-                " but got {}.").format(device_ids)
+        assert (
+            device_ids and len(device_ids) == 1
+        ), f"DistributedDataParallel device_ids contain exactlyone entry, but got {device_ids}."
         self.device_ids = list(map(lambda x: _get_device_index(x, True), device_ids))
         self.module = module
         self.broadcast_buffers = broadcast_buffers
@@ -142,10 +142,11 @@ class DistributedDataParallel(Module):
         self._enable_async = False
         self._require_backward_grad_sync = True
         named_parameters = self.module.named_parameters()
-        named_parameters = list(named_parameters)
-        if len(named_parameters) > 0:
+        if named_parameters := list(named_parameters):
             if isinstance(named_parameters[0][1], torch.Tensor):
-                if any([not isinstance(p, torch.Tensor) for name, p in named_parameters]):
+                if any(
+                    not isinstance(p, torch.Tensor) for name, p in named_parameters
+                ):
                     raise ValueError('named_parameters should consistently be a sequence of '
                                      'tuples (name, torch.Tensor)')
                 self._is_tensor_instance = True
@@ -160,9 +161,11 @@ class DistributedDataParallel(Module):
                                          in sorted(named_parameters)}
         else:
             self._is_tensor_instance = False
-            self._parameter_names = {v: 'push_pull.noname.%s' % i
-                                     for param_group in self.param_groups
-                                     for i, v in enumerate(param_group['params'])}
+            self._parameter_names = {
+                v: f'push_pull.noname.{i}'
+                for param_group in self.param_groups
+                for i, v in enumerate(param_group['params'])
+            }
         if size() > 1:
             self._register_hooks()
             named_params = self.module.named_parameters()
@@ -171,14 +174,12 @@ class DistributedDataParallel(Module):
 
         # declare tensors
         for name in sorted(self._parameter_names.values()):
-            declare("Gradient."+name)
+            declare(f"Gradient.{name}")
         # We use two loops for load-balancing
         for name in sorted(self._parameter_names.values()):
-            declare("Parameter."+name)
+            declare(f"Parameter.{name}")
 
-        # broadcast model state
-        module_states = list(self.module.state_dict().values())
-        if len(module_states) > 0:
+        if module_states := list(self.module.state_dict().values()):
             bps.torch.broadcast_parameters(self.module.state_dict(), root_rank=0)
 
     @contextmanager
@@ -240,8 +241,9 @@ class DistributedDataParallel(Module):
         else:
             tensor = p.grad
             tensor_compressed, ctx = self._compression.compress(tensor)
-            handle, grad_count = byteps_push_pull_group(tensor_compressed, average=True,
-                    name="Gradient."+name)
+            handle, grad_count = byteps_push_pull_group(
+                tensor_compressed, average=True, name=f"Gradient.{name}"
+            )
         return handle, ctx, grad_count
 
     def _push_pull_grad_async(self, p):
@@ -255,7 +257,9 @@ class DistributedDataParallel(Module):
         else:
             tensor = p.grad
             tensor_compressed, ctx = self._compression.compress(tensor)
-            handle = byteps_push_pull(tensor_compressed, average=True, name="Gradient."+name)
+            handle = byteps_push_pull(
+                tensor_compressed, average=True, name=f"Gradient.{name}"
+            )
         return handle, ctx
 
     def _make_hook(self, p, num_grads):

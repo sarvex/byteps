@@ -93,8 +93,7 @@ def parse_args():
                         help='topk or randomk')
     parser.add_argument('--fp16-pushpull', action='store_true', default=False,
                         help='use fp16 compression during pushpull')
-    opt = parser.parse_args()
-    return opt
+    return parser.parse_args()
 
 
 def main():
@@ -166,11 +165,7 @@ def main():
     if opt.resume_from:
         net.load_parameters(opt.resume_from, ctx=context)
 
-    if opt.compressor:
-        optimizer = 'sgd'
-    else:
-        optimizer = 'nag'
-
+    optimizer = 'sgd' if opt.compressor else 'nag'
     save_period = opt.save_period
     if opt.save_dir and save_period:
         save_dir = opt.save_dir
@@ -270,7 +265,7 @@ def main():
                 for l in loss:
                     l.backward()
                 trainer.step(batch_size)
-                train_loss += sum([l.sum().asscalar() for l in loss])
+                train_loss += sum(l.sum().asscalar() for l in loss)
 
                 train_metric.update(label, output)
                 name, train_acc = train_metric.get()
